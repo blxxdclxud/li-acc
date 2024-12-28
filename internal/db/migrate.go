@@ -10,8 +10,17 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
+/*
+ApplyMigrations runs available DB migration files from `migrationsDir` directory.
+
+Returns true, if there is new migration(-s) have been applied, false otherwise.
+*/
 func ApplyMigrations(db *pgxpool.Pool, migrationsDir string) (bool, error) {
-	driver, err := postgres.WithInstance(stdlib.OpenDBFromPool(db), &postgres.Config{})
+	// get database driver
+	driver, err := postgres.WithInstance(
+		stdlib.OpenDBFromPool(db), // convert *pgxpool.Pool type to *sql.DB
+		&postgres.Config{},
+	)
 	if err != nil {
 		return false, fmt.Errorf("failed to initialize golang-migrate driver: %w", err)
 	}
@@ -29,7 +38,7 @@ func ApplyMigrations(db *pgxpool.Pool, migrationsDir string) (bool, error) {
 	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return false, fmt.Errorf("failed to apply migrations: %w", err)
 	}
-	if errors.Is(err, migrate.ErrNoChange) {
+	if errors.Is(err, migrate.ErrNoChange) { // check if no new migrations are applied
 		return false, nil
 	}
 	return true, nil
