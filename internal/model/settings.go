@@ -1,5 +1,7 @@
 package model
 
+// Settings struct represents the model used in database, table `settings`.
+// Store all data needed to form and send receipts.
 type Settings struct {
 	Id          int    `db:"Id"`
 	ReceiptFile []byte `db:"ReceiptFile"`

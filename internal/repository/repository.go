@@ -8,10 +8,13 @@ import (
 	"li-acc/pkg/logger"
 )
 
+// Repository stores DB's connection pool object to manage operations with it.
 type Repository struct {
 	DB *pgxpool.Pool
 }
 
+// ConnectDB creates new connection pool and checks its connection using Ping.
+// If it is succeeded, returns initialized Repository object.
 func ConnectDB(dsn string) (*Repository, error) {
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
@@ -19,7 +22,7 @@ func ConnectDB(dsn string) (*Repository, error) {
 		return nil, err
 	}
 
-	// Check if the DB connection is working by doing a simple query
+	// Check the connection to the DB
 	if err = pool.Ping(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to ping DB: %w", err)
 	}
@@ -30,6 +33,7 @@ func ConnectDB(dsn string) (*Repository, error) {
 
 }
 
+// CloseDB closes the pool of the Repository (closes the connection to DB)
 func (r *Repository) CloseDB() {
 	r.DB.Close()
 }

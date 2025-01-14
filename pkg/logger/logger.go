@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// logger is global variable that stores the zap.Logger reference
 var logger *zap.Logger
 
 func Init(env string) error {
@@ -18,15 +19,15 @@ func Init(env string) error {
 	}
 
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	cfg.EncoderConfig.EncodeTime = customTimeEncoder
+	cfg.EncoderConfig.EncodeTime = customTimeEncoder // set custom time format
 
 	var err error
-	logger, err = cfg.Build()
+	logger, err = cfg.Build() // build the config
 	if err != nil {
 		return err
 	}
 
-	zap.ReplaceGlobals(logger)
+	zap.ReplaceGlobals(logger) // replace global logger with new one (`logger`)
 	return nil
 }
 
@@ -34,6 +35,8 @@ func Init(env string) error {
 func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(t.Format("02-01-2006 15:04:05")) // DD-MM-YYYY HH:MM:SS
 }
+
+// Below provided convenient functions to log messages of different level.
 
 // Info logs an informational message
 func Info(msg string, fields ...zap.Field) {
