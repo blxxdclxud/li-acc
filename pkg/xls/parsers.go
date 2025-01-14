@@ -69,7 +69,7 @@ func ParseSettings(filename string) (map[string]string, error) {
 // ParsePayers parses rows for each payer from the sheet PayersSheet in the given range.
 // Parsing starts from the given row (startRow).
 // Rows contain payer and payment information as Name and Surname, bank number, payment amount, etc.
-func ParsePayers(filename string) ([][]string, error) {
+func ParsePayers(filename string) ([]Payer, error) {
 	var ss *excelize.File // spreadsheet
 
 	// Check if the file is valid and open it
@@ -85,7 +85,7 @@ func ParsePayers(filename string) ([][]string, error) {
 	}
 
 	// parsed rows stored here
-	var payers [][]string
+	var payers []Payer
 
 	// from which row in the table need to start parsing
 	startRow := 7
@@ -103,18 +103,23 @@ func ParsePayers(filename string) ([][]string, error) {
 			continue
 		}
 
-		// a row with the payer data
-		var payer []string
-
-		for _, cell := range row {
-			if strings.Contains(".", cell) { // check if the cell is the decimal number
-				splitted := strings.Split(cell, ".")
-				tail := splitted[len(splitted)-1]
-				if len(tail) == 1 { // if there are only one decimal after the dot
-					cell = strings.TrimSpace(cell) + "0" // Append "0" to ensure two decimal places
-				}
+		// format the cell row[4] that is an amount
+		amount := row[4]
+		if strings.Contains(".", amount) { // check if the cell is the decimal number
+			splitted := strings.Split(amount, ".")
+			tail := splitted[len(splitted)-1]
+			if len(tail) == 1 { // if there are only one decimal after the dot
+				amount = strings.TrimSpace(amount) + "0" // Append "0" to ensure two decimal places
 			}
-			payer = append(payer, strings.TrimSpace(cell))
+		}
+
+		// a row with the payer data
+		payer := Payer{
+			PersonnelNumber: row[0],
+			GroupCode:       row[1],
+			FullName:        row[2],
+			Date:            row[3],
+			Amount:          amount,
 		}
 
 		payers = append(payers, payer)
