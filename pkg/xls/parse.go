@@ -17,8 +17,8 @@ const (
 // OpenAndCheckSheets gets filename of the xls file needed to open and the sheet name of the sheet, that's presence
 // needs to be checked.
 // Returns the excelize.File object to work with the loaded file, if no error occur.
-func OpenAndCheckSheets(filename, sheetName string) (*excelize.File, error) {
-	spreadsheet, err := excelize.OpenFile(filename) // load xls file
+func OpenAndCheckSheets(filepath, sheetName string) (*excelize.File, error) {
+	spreadsheet, err := excelize.OpenFile(filepath) // load xls file
 	if err != nil {
 		return nil, err
 	}
@@ -33,11 +33,11 @@ func OpenAndCheckSheets(filename, sheetName string) (*excelize.File, error) {
 
 // ParseSettings parses all needed parameters from the sheet SettingsSheet in the given range (startRow, endRow).
 // Parameters contain receiver information needed to perform payments.
-func ParseSettings(filename string) (map[string]string, error) {
+func ParseSettings(filepath string) (map[string]string, error) {
 	var ss *excelize.File // spreadsheet
 
 	// Check if the file is valid and open it
-	ss, err := OpenAndCheckSheets(filename, SettingsSheet)
+	ss, err := OpenAndCheckSheets(filepath, SettingsSheet)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +69,11 @@ func ParseSettings(filename string) (map[string]string, error) {
 // ParsePayers parses rows for each payer from the sheet PayersSheet in the given range.
 // Parsing starts from the given row (startRow).
 // Rows contain payer and payment information as Name and Surname, bank number, payment amount, etc.
-func ParsePayers(filename string) ([]Payer, error) {
+func ParsePayers(filepath string) ([]Payer, error) {
 	var ss *excelize.File // spreadsheet
 
 	// Check if the file is valid and open it
-	ss, err := OpenAndCheckSheets(filename, SettingsSheet)
+	ss, err := OpenAndCheckSheets(filepath, SettingsSheet)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +129,11 @@ func ParsePayers(filename string) ([]Payer, error) {
 
 // ParseEmail parses all emails and payers full names from EmailsSheet.
 // Each row contains two cells - Full Name and Email.
-func ParseEmail(filename string) (map[string]string, error) {
+func ParseEmail(filepath string) (map[string]string, error) {
 	var ss *excelize.File // spreadsheet
 
 	// Check if the file is valid and open it
-	ss, err := OpenAndCheckSheets(filename, SettingsSheet)
+	ss, err := OpenAndCheckSheets(filepath, SettingsSheet)
 	if err != nil {
 		return nil, err
 	}
