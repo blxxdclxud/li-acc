@@ -1,9 +1,10 @@
 package logger
 
 import (
+	"time"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"time"
 )
 
 // logger is global variable that stores the zap.Logger reference
@@ -56,6 +57,11 @@ func Debug(msg string, fields ...zap.Field) {
 // Warn logs a warning message
 func Warn(msg string, fields ...zap.Field) {
 	zap.L().Warn(msg, fields...)
+}
+
+// Fatal logs a warning message
+func Fatal(msg string, fields ...zap.Field) {
+	zap.L().Fatal(msg, fields...)
 }
 
 // Sync flushes any buffered log entries

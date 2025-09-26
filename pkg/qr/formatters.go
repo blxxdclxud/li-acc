@@ -1,14 +1,10 @@
 package qr
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
-// FormatAmount formats the payment amount to the needed pattern for receipt.
-// Since the amount 2000,00 (or just 00) rubles should be represented as 200000 (the cents value just appended without delimiter).
-// E.g. 3200,80 turns to 320080.
-func FormatAmount(amount string) string {
+// formatAmount formats the payment amount value to fit the QrCode data format.
+// Shortly, amount of the format 1230.00 must look as 123000.
+func formatAmount(amount string) string {
 	// No matter if delimiter is ',' or '.', it means the same. Then split int part and decimal part
 	fmtAmount := strings.Split(
 		strings.ReplaceAll(amount, ",", "."),
@@ -16,7 +12,9 @@ func FormatAmount(amount string) string {
 	)
 	if len(fmtAmount) == 1 { // if there is no decimal part
 		fmtAmount = append(fmtAmount, "00") // make the cents value default (00 cents)
+	} else if len(fmtAmount[1]) == 1 { // if the amount in the format 230.4, make it 230.40
+		fmtAmount[1] += "0"
 	}
 
-	return fmt.Sprintf("%s руб. %s коп.", fmtAmount[0], fmtAmount[1])
+	return strings.Join(fmtAmount, "")
 }
