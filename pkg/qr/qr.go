@@ -56,7 +56,8 @@ func (q QrCode) GetPayersQrDataString(payerData model.Payer) string {
 	return strings.Join(parts, "|")
 }
 
-// GenerateQRCode generates new qr code from provided data qrData. It stores the image at the given path outPath
+// GenerateQRCode generates new qr code from provided data qrData. It stores the image at the given path outPath.
+// If the outPath's base does not exist, it creates all needed directories to store file.
 func (q QrCode) GenerateQRCode(qrData, outPath string) error {
 	// create directory of the output file, if it does not exist
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
