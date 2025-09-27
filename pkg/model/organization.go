@@ -8,5 +8,5 @@ type Organization struct {
 	CorrespAcc  string `json:"Корреспондентский счет"`
 	PayeeINN    string `json:"ИНН"`
 	KPP         string `json:"КПП"`
-	ExtraParams string `json:"Дополнительные параметры ДШК" include:"false"` // tag `include` means "include to QrCode data"
+	ExtraParams string `json:"Дополнительные параметры ДШК" includeQr:"false"` // tag `includeQr` means "include to QrCode data"
 }
