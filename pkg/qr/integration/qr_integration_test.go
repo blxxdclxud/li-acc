@@ -1,11 +1,12 @@
 //go:build integration
 
-package qr
+package integration
 
 import (
 	"flag"
 	"image/jpeg"
 	"li-acc/pkg/model"
+	qr2 "li-acc/pkg/qr"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,11 +17,31 @@ import (
 
 var keepQr = flag.Bool("keep-qr", false, "keep generated QRs for manual inspection")
 
+var orgFix = model.Organization{
+	Name:        "Муниципальное автономное общеобразовательное учреждение \"Тест-тест №7\" Тест-Тестового района г.Казани (л/с 7777777777777777)",
+	PersonalAcc: "20202020202020202020",
+	BankName:    "ОТДЕЛЕНИЕ РЕСПУБЛИКА ТАТАРСТАН БАНКА ТЕСТА//ТТТ по Республике Татарстан г Казань",
+	BIC:         "999999999",
+	CorrespAcc:  "1111111111",
+	PayeeINN:    "2222222222",
+	KPP:         "888888888",
+	ExtraParams: "test_extra_params",
+}
+
+var payerFix = model.Payer{
+	PersAcc:  "123456",
+	CHILDFIO: "TEST NAME Surname",
+	Purpose:  "test",
+	CBC:      "123454656543",
+	OKTMO:    "9879098",
+	Sum:      "10150.40",
+}
+
 // общий хелпер, чтобы не дублировать код
 func generateAndCheckQR(t *testing.T, org model.Organization, payer model.Payer, outPath string) {
 	t.Helper()
 
-	qr := NewQrPattern(org)
+	qr := qr2.NewQrPattern(org)
 	qrStr := qr.GetPayersQrDataString(payer)
 
 	err := qr.GenerateQRCode(qrStr, outPath)
@@ -84,7 +105,7 @@ func TestGenerateQRCode_RealData(t *testing.T) {
 
 // 5. Edge case: GenerateQRCode with empty string
 func TestGenerateQRCode_EmptyData(t *testing.T) {
-	qr := NewQrPattern(orgFix)
+	qr := qr2.NewQrPattern(orgFix)
 	tmpDir := t.TempDir()
 	err := qr.GenerateQRCode("", tmpDir)
 	require.Error(t, err)
