@@ -1,10 +1,13 @@
-package sender
+//go:build integration
+
+package integration
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	sender2 "li-acc/pkg/sender"
 	"net/http"
 	"strings"
 	"sync"
@@ -103,15 +106,15 @@ func TestSendEmail_SingleRecipient(t *testing.T) {
 	senderEmail := "sender@test.com"
 	recEmail := "rec@test.com"
 
-	sender := NewSender(env.Host, mustAtoi(env.SmtpPort), senderEmail, "", false)
+	sender := sender2.NewSender(env.Host, mustAtoi(env.SmtpPort), senderEmail, "", false)
 
 	subject := "Single test"
 	body := "Hello from testcontainers single"
-	msgStatus := FormMessage(subject, body, "", senderEmail, recEmail)
+	msgStatus := sender2.FormMessage(subject, body, "", senderEmail, recEmail)
 
 	storeForSender := false
 
-	statusCh := make(chan EmailStatus, 1)
+	statusCh := make(chan sender2.EmailStatus, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -120,7 +123,7 @@ func TestSendEmail_SingleRecipient(t *testing.T) {
 
 	res := <-statusCh
 	require.Empty(t, res.Status)
-	require.Equal(t, SuccessType, res.StatusType)
+	require.Equal(t, sender2.SuccessType, res.StatusType)
 
 	items := getMessagesFromMailHog(t, env)
 	require.NotEmpty(t, items)
@@ -147,20 +150,20 @@ func TestSendEmail_MultipleRecipientsParallel(t *testing.T) {
 		recEmails = append(recEmails, fmt.Sprintf("rec%d@test.com", i+1))
 	}
 
-	sender := NewSender(env.Host, mustAtoi(env.SmtpPort), senderEmail, "", false)
+	sender := sender2.NewSender(env.Host, mustAtoi(env.SmtpPort), senderEmail, "", false)
 
 	subject := "Multiple test"
 	body := "Hello from testcontainers multiple"
 
 	storeForSender := true
 
-	statusCh := make(chan EmailStatus, len(recEmails))
+	statusCh := make(chan sender2.EmailStatus, len(recEmails))
 	var wg sync.WaitGroup
 
 	for _, rec := range recEmails {
 		wg.Add(1)
 
-		msgStatus := FormMessage(subject, body, "", senderEmail, rec)
+		msgStatus := sender2.FormMessage(subject, body, "", senderEmail, rec)
 
 		go sender.SendEmail(msgStatus.Msg, statusCh, &wg, storeForSender)
 	}
@@ -171,7 +174,7 @@ func TestSendEmail_MultipleRecipientsParallel(t *testing.T) {
 	// check that all status messages are empty, and all statuses are success
 	for status := range statusCh {
 		require.Empty(t, status.Status)
-		require.Equal(t, SuccessType, status.StatusType)
+		require.Equal(t, sender2.SuccessType, status.StatusType)
 	}
 
 	// check that amount of items = amount of recipients
