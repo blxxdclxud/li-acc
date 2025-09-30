@@ -1,7 +1,10 @@
-package xls
+//go:build integration
+
+package integration
 
 import (
 	"li-acc/pkg/model"
+	"li-acc/pkg/xls"
 	"path/filepath"
 	"testing"
 
@@ -13,7 +16,7 @@ func TestParseSettings_Integration(t *testing.T) {
 	t.Run("valid file", func(t *testing.T) {
 		path := filepath.Join("testdata", "settings_valid.xlsm")
 
-		org, err := ParseSettings(path)
+		org, err := xls.ParseSettings(path)
 		require.NoError(t, err)
 
 		require.Equal(t, "Школа АБВ (12377№7_) ТЕСТ ТЕСТ", org.Name)
@@ -29,7 +32,7 @@ func TestParseSettings_Integration(t *testing.T) {
 	t.Run("invalid file (no settings page)", func(t *testing.T) {
 		path := filepath.Join("testdata", "settings_invalid_no_page.xlsm")
 
-		org, err := ParseSettings(path)
+		org, err := xls.ParseSettings(path)
 		require.Error(t, err)
 		require.Nil(t, org)
 
@@ -41,7 +44,7 @@ func TestParseSettings_Integration(t *testing.T) {
 
 		errorContains := []string{"missing required parameters", "Наименование организации", "Расчетный счет"}
 
-		org, err := ParseSettings(path)
+		org, err := xls.ParseSettings(path)
 		require.Error(t, err)
 		require.Nil(t, org)
 		for _, substr := range errorContains {
@@ -54,7 +57,7 @@ func TestParseSettings_Integration(t *testing.T) {
 func TestParsePayers_Integration(t *testing.T) {
 	t.Run("valid data", func(t *testing.T) {
 		path := filepath.Join("testdata", "payers_valid.xlsm")
-		payers, err := ParsePayers(path)
+		payers, err := xls.ParsePayers(path)
 		require.NoError(t, err)
 		require.Len(t, payers, 2) // между строками двух плательщиков есть пустые, их должен скипнуть
 
@@ -79,7 +82,7 @@ func TestParsePayers_Integration(t *testing.T) {
 
 	t.Run("no rows after start", func(t *testing.T) {
 		path := filepath.Join("testdata", "payers_empty.xlsm")
-		payers, err := ParsePayers(path)
+		payers, err := xls.ParsePayers(path)
 		require.NoError(t, err)
 		require.Empty(t, payers)
 	})
@@ -114,7 +117,7 @@ func TestParseEmail_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join("testdata", tt.filename)
 
-			emails, err := ParseEmail(path)
+			emails, err := xls.ParseEmail(path)
 
 			if len(tt.expectErrPart) > 0 {
 				require.Error(t, err)

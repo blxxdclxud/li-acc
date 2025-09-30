@@ -69,7 +69,6 @@ func ParseSettingsFromFile(ss *excelize.File, sheet string) (*model.Organization
 		val := strings.TrimSpace(row[1])
 		if key != "" && val != "" {
 			params[key] = val
-			fmt.Println(key, val)
 		}
 	}
 
