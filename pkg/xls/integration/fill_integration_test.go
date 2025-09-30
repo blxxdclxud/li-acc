@@ -1,10 +1,11 @@
 //go:build integration
 
-package xls
+package integration
 
 import (
 	"fmt"
 	"li-acc/pkg/model"
+	"li-acc/pkg/xls"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,14 +31,14 @@ func TestFillOrganizationParamsInReceipt(t *testing.T) {
 
 	// создаём минимальный шаблон
 	f := excelize.NewFile()
-	f.NewSheet(BlankReceiptPatternSheet)
+	f.NewSheet(xls.BlankReceiptPatternSheet)
 	if err := f.SaveAs(template); err != nil {
 		t.Fatalf("failed to save template: %v", err)
 	}
 
-	FillerReceiptPatternFileName = output
+	xls.FillerReceiptPatternFileName = output
 
-	if err := FillOrganizationParamsInReceipt(template, org); err != nil {
+	if err := xls.FillOrganizationParamsInReceipt(template, org); err != nil {
 		t.Fatalf("FillOrganizationParamsInReceipt returned error: %v", err)
 	}
 
@@ -61,7 +62,7 @@ func TestFillOrganizationParamsInReceipt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got, _ := res.GetCellValue(BlankReceiptPatternSheet, tt.cell)
+		got, _ := res.GetCellValue(xls.BlankReceiptPatternSheet, tt.cell)
 		if got != tt.want {
 			t.Errorf("%s: want %q, got %q", tt.cell, tt.want, got)
 		}
