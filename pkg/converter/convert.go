@@ -12,38 +12,22 @@ import (
 	"strings"
 )
 
-var apiUrl = "https://api-server.compdf.com/server/v1/"
-var (
-	endpointToken        = "oauth/token"
-	endpointUploadFile   = "file/upload"
-	endpointConvert      = "execute/start"
-	endpointGetConverted = "file/fileInfo"
-)
-
-// Conversion defines converter's conversion kinds.
-// e.g. from DOC to PDF, etc.
-type Conversion struct {
-	From string
-	To   string
-}
-
-func (c *Conversion) endpoint() string {
-	return fmt.Sprintf("task/%s/%s", strings.ToLower(c.From), strings.ToLower(c.To))
-}
-
 // Converter struct manages API operations of the converter.
 // The methods are general for all kinds of conversion, except ExcelToPdf.
 type Converter struct {
 	token   string // auth token of API
 	baseUrl string
+	client  HTTPClient
 }
 
 // NewConverter is initializer of the Converter object, generates auth token and stores in field `token`
-func NewConverter() (*Converter, error) {
-	c := Converter{}
-	c.baseUrl = strings.TrimRight(apiUrl, "/")
+func NewConverter(baseUrl, publicKey, privateKey string) (*Converter, error) {
+	c := Converter{
+		baseUrl: strings.TrimRight(baseUrl, "/"),
+		client:  RealClient{},
+	}
 
-	token, err := c.generateToken()
+	token, err := c.generateToken(publicKey, privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate auth token: %w", err)
 	}
@@ -94,7 +78,7 @@ func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conve
 	}
 
 	downloadUrl, err := c.getConvertedFileUrl(fileKey)
-	fmt.Println(downloadUrl)
+
 	if err != nil {
 		return fmt.Errorf("failed to fetch url of converted file: %w", err)
 	}
@@ -107,13 +91,10 @@ func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conve
 	return err
 }
 
-// generateToken generates temporary auth token via API call. It is used then passing in requests header.
-func (c *Converter) generateToken() (string, error) {
-	publicKey := os.Getenv("PUBLIC_KEY")
-	secretKey := os.Getenv("SECRET_KEY")
-
+// generateToken generates temporary auth token via API call. Token places in other requests' headers.
+func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
 	if publicKey == "" || secretKey == "" {
-		return "", fmt.Errorf("missing PUBLIC_KEY or SECRET_KEY in environment variables")
+		return "", fmt.Errorf("missing API kes in environment variables")
 	}
 
 	content := map[string]string{
@@ -123,16 +104,21 @@ func (c *Converter) generateToken() (string, error) {
 
 	contentJson, _ := json.Marshal(content)
 
-	req, _ := c.newRequest(http.MethodPost, endpointToken, bytes.NewReader(contentJson))
+	req, _ := c.newRequest(http.MethodPost, EndpointToken, bytes.NewReader(contentJson))
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := performRequest(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var tr tokenResponse
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tr TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return "", err
 	}
@@ -142,16 +128,21 @@ func (c *Converter) generateToken() (string, error) {
 
 // createTask creates the task via API call, when task is opened, we can attach the files and perform conversions.
 func (c *Converter) createTask(conversion Conversion) (string, error) {
-	req, _ := c.newRequest(http.MethodGet, conversion.endpoint(), nil)
+	req, _ := c.newRequest(http.MethodGet, conversion.Endpoint(), nil)
 	req.Header.Add("Authorization", "Bearer "+c.token)
 
-	resp, err := performRequest(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var tr createTaskResponse
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tr CreateTaskResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return "", err
 	}
@@ -185,18 +176,23 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 		return "", err
 	}
 
-	req, _ := c.newRequest(http.MethodPost, endpointUploadFile, body)
+	req, _ := c.newRequest(http.MethodPost, EndpointUploadFile, body)
 
 	req.Header.Add("Authorization", "Bearer "+c.token)
 	req.Header.Add("Content-Type", writer.FormDataContentType())
 
-	resp, err := performRequest(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var fr uploadFileResponse
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var fr UploadFileResponse
 	if err := json.NewDecoder(resp.Body).Decode(&fr); err != nil {
 		return "", err
 	}
@@ -205,7 +201,7 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 
 // executeConversion converts uploaded Excel file to PDF
 func (c *Converter) executeConversion(taskId string) error {
-	req, _ := c.newRequest(http.MethodGet, endpointConvert, nil)
+	req, _ := c.newRequest(http.MethodGet, EndpointConvert, nil)
 
 	params := req.URL.Query()
 	params.Add("taskId", taskId)
@@ -213,15 +209,24 @@ func (c *Converter) executeConversion(taskId string) error {
 
 	req.Header.Add("Authorization", "Bearer "+c.token)
 
-	resp, err := performRequest(req)
+	resp, err := c.client.Do(req)
 	resp.Body.Close()
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
 // getConvertedFileUrl fetches converted file download URL from json response of the API
 func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
-	req, _ := c.newRequest(http.MethodGet, endpointGetConverted, nil)
+	req, _ := c.newRequest(http.MethodGet, EndpointGetConverted, nil)
 
 	params := req.URL.Query()
 	params.Add("fileKey", fileKey)
@@ -229,33 +234,22 @@ func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
 
 	req.Header.Add("Authorization", "Bearer "+c.token)
 
-	resp, err := performRequest(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var gr getConvertedResponse
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var gr GetConvertedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
 		return "", err
 	}
 	return gr.Data.DownloadUrl, nil
-}
-
-// getJsonResponse fetches the Json format response of the server and returns it as map of interface{} objects.
-// Passed parameter [body] - API response body. Returns error if API response is not successful.
-func getJsonResponse(body io.Reader) (map[string]interface{}, error) {
-	var data map[string]interface{}
-	byteData, err := io.ReadAll(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-	err = json.Unmarshal(byteData, &data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response body: %w", err)
-	}
-
-	return data, nil
 }
 
 // downloadFile gets file download URL as [url] parameter, gets its binary data and writes to the file [filename].
@@ -273,7 +267,7 @@ func downloadFile(url string, filename string) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC, 0606)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0606)
 	if err != nil {
 		return fmt.Errorf("failed to open the file '%s': %w", filename, err)
 	}
@@ -281,7 +275,7 @@ func downloadFile(url string, filename string) error {
 
 	_, err = file.Write(content)
 	if err != nil {
-		return fmt.Errorf("failed to write pdf data to the file '%s': %w", filename, err)
+		return fmt.Errorf("failed to write file data to the file '%s': %w", filename, err)
 	}
 
 	return nil

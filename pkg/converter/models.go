@@ -1,24 +1,24 @@
 package converter
 
-type tokenResponse struct {
+type TokenResponse struct {
 	Data struct {
 		AccessToken string `json:"accessToken"`
 	} `json:"data"`
 }
 
-type createTaskResponse struct {
+type CreateTaskResponse struct {
 	Data struct {
 		TaskId string `json:"taskId"`
 	} `json:"data"`
 }
 
-type uploadFileResponse struct {
+type UploadFileResponse struct {
 	Data struct {
 		FileKey string `json:"fileKey"`
 	} `json:"data"`
 }
 
-type getConvertedResponse struct {
+type GetConvertedResponse struct {
 	Data struct {
 		DownloadUrl string `json:"downloadUrl"`
 	} `json:"data"`
