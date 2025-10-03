@@ -39,11 +39,10 @@ func prettifyCredentialsString(text, splitWord string) string {
 	extraSpaces := 2
 
 	// make more space between credentials (each separated with ';') to make string more readable
-	text = strings.Replace(
+	text = strings.ReplaceAll(
 		text,
 		";",
-		";"+strings.Repeat(" ", extraSpaces),
-		-1) // replace all occurrences
+		";"+strings.Repeat(" ", extraSpaces))
 
 	return trimEachLine(text)
 }

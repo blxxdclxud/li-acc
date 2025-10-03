@@ -101,13 +101,13 @@ func TestParsePayersFromFile(t *testing.T) {
 	f.SetActiveSheet(index)
 
 	// Старт с 7-й строки
-	f.SetCellValue(sheet, "A7", "12345")       // PersAcc
-	f.SetCellValue(sheet, "B7", "Иванов И.И.") // CHILDFIO
-	f.SetCellValue(sheet, "C7", "Назначение")  // Purpose
-	f.SetCellValue(sheet, "D7", "123")         // CBC
-	f.SetCellValue(sheet, "E7", "456")         // OKTMO
-	f.SetCellValue(sheet, "H7", "100.5")       // Sum (col H = index 7)
-	f.SetCellValue(sheet, "A8", "")            // пустая строка для проверки пропуска
+	_ = f.SetCellValue(sheet, "A7", "12345")       // PersAcc
+	_ = f.SetCellValue(sheet, "B7", "Иванов И.И.") // CHILDFIO
+	_ = f.SetCellValue(sheet, "C7", "Назначение")  // Purpose
+	_ = f.SetCellValue(sheet, "D7", "123")         // CBC
+	_ = f.SetCellValue(sheet, "E7", "456")         // OKTMO
+	_ = f.SetCellValue(sheet, "H7", "100.5")       // Sum (col H = index 7)
+	_ = f.SetCellValue(sheet, "A8", "")            // пустая строка для проверки пропуска
 
 	payers, err := ParsePayersFromFile(f, sheet)
 	require.NoError(t, err)

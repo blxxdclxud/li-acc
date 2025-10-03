@@ -16,9 +16,9 @@ jobs:
           go-version: '1.25'
 
       - name: Start Linting
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.62.2
+          version: v2.1.0
 
   test-unit:
     name: Unit Tests
