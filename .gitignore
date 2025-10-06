@@ -27,3 +27,5 @@ pkg/**/.env.local
 
 # output files of integration tests
 pkg/**/out/
+
+.coverage.out
