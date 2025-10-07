@@ -7,18 +7,19 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// StatusType is the type of the Status message for Emailstatus
+// StatusType is the type of the StatusMsg message for EmailStatus
 type StatusType int
 
-const InfoType = StatusType(0)    // Regular info message, the same as success but with additional information
-const ErrorType = StatusType(1)   // Error message
-const SuccessType = StatusType(2) // Success
+const Info = StatusType(0)    // Regular info message, the same as success but with additional information
+const Error = StatusType(1)   // Error message
+const Success = StatusType(2) // Success
 
 // EmailStatus is needed to store information about sent email in chanel, or just in regular execution.
 type EmailStatus struct {
-	Msg        *gomail.Message // The message attempted to be sent
-	StatusType StatusType      // The Status type: success, error or just info (last one usually for logs)
-	Status     string          // The error message that occurs while sending; nil in the case of success.
+	Msg       *gomail.Message // The message attempted to be sent
+	Status    StatusType      // The StatusMsg type: success, error or just info (last one usually for logs)
+	StatusMsg string          // The enhanced message for the error that occurs while sending.
+	Cause     error           // != nil if underlying smtp error
 }
 
 // FormMessage forms the email message using gomail.Message instance. Fills in following parameters:
@@ -34,20 +35,20 @@ func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipien
 	message.SetBody("text/plain", body)
 
 	var status string
-	statusType := SuccessType
+	statusType := Success
 
 	if attachmentFilePath != "" {
 		if _, err := os.Stat(attachmentFilePath); err == nil {
 			message.Attach(attachmentFilePath)
 		} else {
 			status = fmt.Sprintf("attachment not found, skipping: %v", err)
-			statusType = InfoType
+			statusType = Info
 		}
 	}
 
 	return &EmailStatus{
-		Msg:        message,
-		StatusType: statusType,
-		Status:     status,
+		Msg:       message,
+		Status:    statusType,
+		StatusMsg: status,
 	}
 }

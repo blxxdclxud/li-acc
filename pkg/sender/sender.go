@@ -34,7 +34,7 @@ func NewSender(smtpHost string, smtpPort int, senderEmail, senderPassword string
 // Set storeForSender as true, if you want to store the mail in sender's mailbox, false otherwise.
 func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, wg *sync.WaitGroup, storeForSender bool) {
 	defer wg.Done()
-	emailStatus := EmailStatus{Msg: msg, StatusType: SuccessType, Status: ""}
+	emailStatus := EmailStatus{Msg: msg, Status: Success, StatusMsg: ""}
 
 	if storeForSender {
 		// Add sender email to recipient, so sender will have the copy of the message.
@@ -49,8 +49,9 @@ func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, wg *syn
 
 	err := dialer.DialAndSend(msg)
 	if err != nil {
-		emailStatus.StatusType = ErrorType
-		emailStatus.Status = fmt.Sprintf("failed to send message to %s: %v", msg.GetHeader("To"), err)
+		emailStatus.Status = Error
+		emailStatus.StatusMsg = fmt.Sprintf("failed to send message to %s", msg.GetHeader("To"))
+		emailStatus.Cause = err
 	}
 	status <- emailStatus
 }

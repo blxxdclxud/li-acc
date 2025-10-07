@@ -1,4 +1,4 @@
-//go:build integration
+////go:build integration
 
 package integration
 
@@ -122,8 +122,8 @@ func TestSendEmail_SingleRecipient(t *testing.T) {
 	wg.Wait()
 
 	res := <-statusCh
-	require.Empty(t, res.Status)
-	require.Equal(t, sender2.SuccessType, res.StatusType)
+	require.Empty(t, res.StatusMsg)
+	require.Equal(t, sender2.Success, res.Status)
 
 	items := getMessagesFromMailHog(t, env)
 	require.NotEmpty(t, items)
@@ -173,8 +173,8 @@ func TestSendEmail_MultipleRecipientsParallel(t *testing.T) {
 
 	// check that all status messages are empty, and all statuses are success
 	for status := range statusCh {
-		require.Empty(t, status.Status)
-		require.Equal(t, sender2.SuccessType, status.StatusType)
+		require.Empty(t, status.StatusMsg)
+		require.Equal(t, sender2.Success, status.Status)
 	}
 
 	// check that amount of items = amount of recipients

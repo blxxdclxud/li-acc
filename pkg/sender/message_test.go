@@ -11,8 +11,8 @@ import (
 func TestFormMessage(t *testing.T) {
 	t.Run("without attachment", func(t *testing.T) {
 		email := FormMessage("Subject", "Body", "", "sender@test.com", "rec1@test.com", "rec2@test.com")
-		require.Equal(t, SuccessType, email.StatusType)
-		require.Empty(t, email.Status)
+		require.Equal(t, Success, email.Status)
+		require.Empty(t, email.StatusMsg)
 		require.Equal(t, []string{"sender@test.com"}, email.Msg.GetHeader("From"))
 		require.Equal(t, []string{"rec1@test.com", "rec2@test.com"}, email.Msg.GetHeader("To"))
 	})
@@ -25,13 +25,13 @@ func TestFormMessage(t *testing.T) {
 		defer os.Remove(tmpFile)
 
 		email := FormMessage("Subject", "Body", tmpFile, "me@example.com", "you@example.com")
-		require.Equal(t, SuccessType, email.StatusType)
-		require.Empty(t, email.Status)
+		require.Equal(t, Success, email.Status)
+		require.Empty(t, email.StatusMsg)
 	})
 
 	t.Run("with not existing attachment", func(t *testing.T) {
 		email := FormMessage("Subject", "Body", "no-such-file.txt", "me@example.com", "you@example.com")
-		require.Equal(t, InfoType, email.StatusType)
-		require.Contains(t, email.Status, "attachment not found")
+		require.Equal(t, Info, email.Status)
+		require.Contains(t, email.StatusMsg, "attachment not found")
 	})
 }
