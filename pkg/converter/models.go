@@ -20,6 +20,6 @@ type UploadFileResponse struct {
 
 type GetConvertedResponse struct {
 	Data struct {
-		DownloadUrl string `json:"downloadUrl"`
+		FileUrl string `json:"downloadUrl"`
 	} `json:"data"`
 }

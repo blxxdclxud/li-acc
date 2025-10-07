@@ -138,11 +138,6 @@ func (c *Converter) createTask(conversion Conversion) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
 	var tr CreateTaskResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
 		return "", err
@@ -161,7 +156,7 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("file", filepath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("closing multipart writer: %w", err)
 	}
 
 	if _, err = io.Copy(part, file); err != nil {
@@ -188,11 +183,6 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
 	var fr UploadFileResponse
 	if err := json.NewDecoder(resp.Body).Decode(&fr); err != nil {
 		return "", err
@@ -217,11 +207,6 @@ func (c *Converter) executeConversion(taskId string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
 	return nil
 }
 
@@ -241,24 +226,20 @@ func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
 	var gr GetConvertedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
 		return "", err
 	}
-	return gr.Data.DownloadUrl, nil
+	return gr.Data.FileUrl, nil
 }
 
 // downloadFile gets file download URL as [url] parameter, gets its binary data and writes to the file [filename].
 func downloadFile(url string, filename string) error {
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot dowload file from %s: %w", url, err)
 	}
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("converted file downloading failed failed. URL: %s, Code: %d",
 			url, resp.StatusCode)
@@ -268,7 +249,7 @@ func downloadFile(url string, filename string) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0606)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open the file '%s': %w", filename, err)
 	}

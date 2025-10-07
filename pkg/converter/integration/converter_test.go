@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,8 +54,8 @@ func newFakeConvertServer(t *testing.T, downloadContent []byte) *httptest.Server
 	fileDownloadUrl := "/download/file-456"
 	mux.HandleFunc(converter.EndpointGetConverted, func(w http.ResponseWriter, r *http.Request) {
 		resp := converter.GetConvertedResponse{Data: struct {
-			DownloadUrl string `json:"downloadUrl"`
-		}{DownloadUrl: ts.URL + fileDownloadUrl}}
+			FileUrl string `json:"downloadUrl"`
+		}{FileUrl: ts.URL + fileDownloadUrl}}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
@@ -90,4 +92,30 @@ func TestConvert_E2E(t *testing.T) {
 	got, err := os.ReadFile(outFile)
 	require.NoError(t, err)
 	require.Equal(t, expectedContent, got)
+}
+
+func TestConvert_RealCase(t *testing.T) {
+	xlsFilePath := "./testdata/receipt_pattern.xlsx"
+
+	if err := godotenv.Load(".env.local"); err != nil {
+		t.Skip("no .env.local found, skipping real data test")
+	}
+
+	pubKey, secKey := os.Getenv("PUBLIC"), os.Getenv("SECRET")
+	if pubKey == "" || secKey == "" {
+		t.Skip("environment variables are empty")
+	}
+
+	outDir := "./testdata/out"
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Skipf("failed to create directory %s: %v", outDir, err)
+	}
+
+	dst := path.Join(outDir, "converted.pdf")
+
+	err := converter.ExcelToPdf(xlsFilePath, dst, pubKey, secKey)
+	require.NoError(t, err)
+
+	_, err = os.Stat(dst)
+	require.NoError(t, err)
 }

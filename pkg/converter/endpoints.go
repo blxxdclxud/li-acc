@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var apiUrl = "https://api-server.compdf.com/server/v1"
+var ApiUrl = "https://api-server.compdf.com/server/v1"
 var (
 	EndpointToken        = "/oauth/token"
 	EndpointUploadFile   = "/file/upload"

@@ -1,13 +1,11 @@
 package converter
 
-import "li-acc/config"
-
 var XLSXToPDF = Conversion{"xlsx", "pdf"}
 
-func ExcelToPdf(inFilepath, outFilepath string) error {
-	conv, err := NewConverter(apiUrl,
-		config.LoadConfig().ConvertAPI.PublicKey,
-		config.LoadConfig().ConvertAPI.PrivateKey)
+func ExcelToPdf(inFilepath, outFilepath, publicKey, privateKey string) error {
+	conv, err := NewConverter(ApiUrl,
+		publicKey,
+		privateKey)
 	if err != nil {
 		return err
 	}
