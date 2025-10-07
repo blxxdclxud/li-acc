@@ -3,6 +3,7 @@ package qr
 import (
 	"fmt"
 	"image/jpeg"
+	"li-acc/internal/errs"
 	"li-acc/pkg/model"
 	"os"
 	"path/filepath"
@@ -61,12 +62,12 @@ func (q QrCode) GetPayersQrDataString(payerData model.Payer) string {
 func (q QrCode) GenerateQRCode(qrData, outPath string) error {
 	// create directory of the output file, if it does not exist
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		return fmt.Errorf("failed to open ")
+		return errs.WrapIOError("create QR code directory", outPath, err)
 	}
 
 	qr, err := qrcode.New(qrData, qrcode.Low)
 	if err != nil {
-		return err
+		return errs.Wrap(errs.System, "failed to generate QR code", err)
 	}
 
 	qr.DisableBorder = true
@@ -74,14 +75,14 @@ func (q QrCode) GenerateQRCode(qrData, outPath string) error {
 	img := qr.Image(80)
 	outFile, err := os.Create(outPath)
 	if err != nil {
-		return err
+		return errs.WrapIOError("create QR code file", outPath, err)
 	}
 	defer outFile.Close()
 
 	err = jpeg.Encode(outFile, img, &jpeg.Options{Quality: 100})
 
 	if err != nil {
-		return err
+		return errs.Wrap(errs.System, "failed to encode QR code image", err)
 	}
 
 	return nil
