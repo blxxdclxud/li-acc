@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"li-acc/internal/errs"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -46,11 +47,11 @@ func (c *Converter) newRequest(method, path string, body io.Reader) (*http.Reque
 	// generate the complete API url
 	fullURL, err := c.endpoint(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to join url and endpoint: %w", err)
 	}
 	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create new <%s> request to %s: %w", method, fullURL, err)
 	}
 	return req, nil
 }
@@ -63,32 +64,32 @@ func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conve
 	// taskId is the ID of created task, used in next requests
 	taskId, err := c.createTask(conversionType)
 	if err != nil {
-		return fmt.Errorf("failed to create task: %w", err)
+		return errs.Wrap(errs.System, "failed to create task", err)
 	}
 
 	// fileKey is ID of uploaded file
 	fileKey, err := c.uploadFile(taskId, inFilepath)
 	if err != nil {
-		return fmt.Errorf("failed to upload file: %w", err)
+		return errs.Wrap(errs.System, "failed to upload file", err)
 	}
 
 	err = c.executeConversion(taskId)
 	if err != nil {
-		return fmt.Errorf("failed to execute conversion: %w", err)
+		return errs.Wrap(errs.System, "failed to execute conversion", err)
 	}
 
 	downloadUrl, err := c.getConvertedFileUrl(fileKey)
 
 	if err != nil {
-		return fmt.Errorf("failed to fetch url of converted file: %w", err)
+		return errs.Wrap(errs.System, "failed to fetch url of converted file", err)
 	}
 
 	// download file from the obtained link and store to [outFilepath]
 	err = downloadFile(downloadUrl, outFilepath)
 	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
+		return errs.Wrap(errs.System, "failed to download file", err)
 	}
-	return err
+	return nil
 }
 
 // generateToken generates temporary auth token via API call. Token places in other requests' headers.
@@ -109,7 +110,7 @@ func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
 	}
 	defer resp.Body.Close()
 
@@ -133,7 +134,7 @@ func (c *Converter) createTask(conversion Conversion) (string, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
 	}
 	defer resp.Body.Close()
 
@@ -153,7 +154,7 @@ func (c *Converter) createTask(conversion Conversion) (string, error) {
 func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 	file, err := os.Open(filepath)
 	if err != nil {
-		return "", err
+		return "", errs.WrapIOError("open file to upload it to converter API", filepath, err)
 	}
 
 	body := &bytes.Buffer{}
@@ -183,7 +184,7 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
 	}
 	defer resp.Body.Close()
 
@@ -210,11 +211,11 @@ func (c *Converter) executeConversion(taskId string) error {
 	req.Header.Add("Authorization", "Bearer "+c.token)
 
 	resp, err := c.client.Do(req)
-	resp.Body.Close()
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -236,7 +237,7 @@ func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
 	}
 	defer resp.Body.Close()
 
