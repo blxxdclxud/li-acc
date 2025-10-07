@@ -44,6 +44,23 @@ func (e *MissingSheetError) Unwrap() error {
 	return nil
 }
 
+type MissingPayersSheetColumns struct {
+	Want int
+	Have int
+}
+
+func (e *MissingPayersSheetColumns) Error() string {
+	return fmt.Sprintf("missing columns on payers sheet: expected %d, actual %d", e.Want, e.Have)
+}
+
+func (e *MissingPayersSheetColumns) Kind() errs.Kind {
+	return errs.User
+}
+
+func (e *MissingPayersSheetColumns) Unwrap() error {
+	return nil
+}
+
 // ----- Emails sheet incomplete rows -----
 
 type MissingEmailsError struct {

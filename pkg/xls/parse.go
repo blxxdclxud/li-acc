@@ -163,7 +163,12 @@ func ParsePayersFromFile(ss *excelize.File, sheet string) ([]model.Payer, error)
 		}
 
 		// format the cell row[7] that is an amount (column H)
-		amount := normalizeAmount(row[7])
+		var amount string
+		if len(row) > 7 {
+			amount = normalizeAmount(row[7])
+		} else {
+			return nil, &MissingPayersSheetColumns{Want: 7, Have: len(row)}
+		}
 
 		// a row with the payer data
 		payer := model.Payer{
