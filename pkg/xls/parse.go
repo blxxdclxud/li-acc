@@ -1,7 +1,7 @@
 package xls
 
 import (
-	"fmt"
+	"li-acc/internal/errs"
 	"li-acc/pkg/model"
 	"slices"
 	"strings"
@@ -35,22 +35,33 @@ const (
 func OpenAndCheckSheets(filepath, sheetName string) (*excelize.File, error) {
 	spreadsheet, err := excelize.OpenFile(filepath) // load xls file
 	if err != nil {
-		return nil, err
+		return nil, errs.WrapIOError("open spreadsheet", filepath, err)
 	}
 
 	// Check if the needed sheet is in the sheets list
 	sheets := spreadsheet.GetSheetList()
 	if !slices.Contains(sheets, sheetName) {
-		return nil, fmt.Errorf("spreadsheet does not contain sheet: %s", sheetName)
+		spreadsheet.Close()
+		return nil, &MissingSheetError{Sheet: sheetName}
 	}
 	return spreadsheet, nil
+}
+
+// get returns all rows of the specified Excel file sheet as [][]string.
+// In case of a reading error (e.g., sheet not found), returns the system error errs.System.
+func get(ss *excelize.File, sheet string) ([][]string, error) {
+	rows, err := ss.GetRows(sheet)
+	if err != nil {
+		return nil, errs.Wrap(errs.System, "failed to get rows from excel", err)
+	}
+	return rows, nil
 }
 
 // ParseSettingsFromFile parses all needed parameters from the given sheet of settings in the given range (SettingsRowStart, SettingsRowEnd).
 // Parameters contain receiver information needed to perform payments.
 func ParseSettingsFromFile(ss *excelize.File, sheet string) (*model.Organization, error) {
 	// Get all rows of the sheet as 2d array of strings
-	rows, err := ss.GetRows(sheet)
+	rows, err := get(ss, sheet)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +104,7 @@ func ParseSettingsFromFile(ss *excelize.File, sheet string) (*model.Organization
 	}
 
 	if len(missing) > 0 { // if any required parameters are missing, return an error
-		return nil, fmt.Errorf("sheet %s is missing required parameters: %v", sheet, missing)
+		return nil, &MissingParamsError{Missing: missing, Sheet: sheet}
 	}
 
 	orgData := model.Organization{
@@ -130,7 +141,7 @@ func ParseSettings(filepath string) (*model.Organization, error) {
 // Rows contain payer and payment information as Name and Surname, bank number, payment amount, etc.
 func ParsePayersFromFile(ss *excelize.File, sheet string) ([]model.Payer, error) {
 	// Get all rows of the sheet as 2d array of strings
-	rows, err := ss.GetRows(sheet)
+	rows, err := get(ss, sheet)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +199,7 @@ func ParsePayers(filepath string) ([]model.Payer, error) {
 // Each row contains two cells - Full Name and Email.
 func ParseEmailFromFile(ss *excelize.File, sheet string) (map[string]string, error) {
 	// Get all rows of the sheet as 2d array of strings
-	rows, err := ss.GetRows(EmailsSheet)
+	rows, err := get(ss, sheet)
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +207,8 @@ func ParseEmailFromFile(ss *excelize.File, sheet string) (map[string]string, err
 	// emails map will store emails in the format `full_name: email`
 	emails := make(map[string]string)
 
-	// missing will accumulate errors about incomplete rows
-	var missing []string
+	// missing will accumulate numbers of incomplete rows
+	var missing []int
 
 	for rowIdx, row := range rows[EmailsRowStart-1:] {
 		// skip empty rows completely
@@ -213,15 +224,9 @@ func ParseEmailFromFile(ss *excelize.File, sheet string) (map[string]string, err
 			email = strings.TrimSpace(row[1])
 		}
 
-		// Check for missing FIO when email exists
-		if fio == "" && email != "" {
-			missing = append(missing, fmt.Sprintf("row %d: missing FIO for email %s", rowIdx+EmailsRowStart, email))
-			continue
-		}
-
-		// Check for missing email when FIO exists
-		if fio != "" && email == "" {
-			missing = append(missing, fmt.Sprintf("row %d: missing email for FIO %s", rowIdx+EmailsRowStart, fio))
+		// Check for missing FIO when email exists or vice versa
+		if fio == "" && email != "" || fio != "" && email == "" {
+			missing = append(missing, EmailsRowStart+rowIdx)
 			continue
 		}
 
@@ -231,7 +236,7 @@ func ParseEmailFromFile(ss *excelize.File, sheet string) (map[string]string, err
 
 	// if there were missing required fields, return them as error
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("invalid emails sheet: %s", strings.Join(missing, "; "))
+		return nil, &MissingEmailsError{MissingLines: missing}
 	}
 
 	return emails, nil
