@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -25,7 +26,7 @@ func (f Frame) Debug(pdf *pdft.PDFt, page int) error {
 		f.X, f.Y, f.W, f.H, // outer frame's coordinates
 		color.RGBA{R: 255, G: 0, B: 0, A: 255})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to draw outer frame: %v", err)
 	}
 
 	// generate and draw inner frame (using margin)
@@ -35,7 +36,7 @@ func (f Frame) Debug(pdf *pdft.PDFt, page int) error {
 		ix, iy, iw, ih,
 		color.RGBA{R: 0, G: 0, B: 255, A: 255})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to draw inner frame: %v", err)
 	}
 
 	return nil
@@ -49,7 +50,7 @@ func (f Frame) Debug(pdf *pdft.PDFt, page int) error {
 func (f Frame) drawRect(pdf *pdft.PDFt, page int, x, y, w, h float64, color color.RGBA) error {
 	img, err := generateFrameImage(int(w), int(h), color)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate frame image: %w", err)
 	}
 	return pdf.InsertImg(img, page, x, y, w, h)
 }

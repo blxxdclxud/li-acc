@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"fmt"
+	"li-acc/internal/errs"
 	"li-acc/pkg/model"
 	"os"
 	"path/filepath"
@@ -61,24 +62,24 @@ func GeneratePersonalReceipt(pdfSrc, pdfDst, qrImgPath, fontPath string, payerDa
 	// Initialize Canvas object
 	canvas, err := NewCanvasFromTemplate(pdfSrc, fontPath, debugMode)
 	if err != nil {
-		return err
+		return errs.Wrap(errs.System, "failed to create new PDF canvas from template file", err)
 	}
 
 	// read bytes of QR Code image
 	img, err := os.ReadFile(qrImgPath)
 	if err != nil {
-		return fmt.Errorf("failed to read a QR Code image file: %w", err)
+		return errs.Wrap(errs.System, "failed to read a QR Code image file", err)
 	}
 
 	// fill canvas
 	if err := canvas.Fill(payerData, img); err != nil {
-		return fmt.Errorf("failed to fill receipt: %w", err)
+		return errs.Wrap(errs.System, "failed to fill receipt", err)
 	}
 
 	// Save the filled file
 	err = canvas.pdf.Save(pdfDst)
 	if err != nil {
-		return fmt.Errorf("failed to save filled pdf receipt `%s`: %w", pdfDst, err)
+		return errs.Wrap(errs.System, fmt.Sprintf("failed to save filled pdf receipt `%s`", pdfDst), err)
 	}
 
 	return nil
