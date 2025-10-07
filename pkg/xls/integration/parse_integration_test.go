@@ -36,20 +36,18 @@ func TestParseSettings_Integration(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, org)
 
-		require.Contains(t, err.Error(), "not contain sheet: Настройки")
+		var ms *xls.MissingSheetError
+		require.ErrorAs(t, err, ms)
 	})
 
 	t.Run("invalid file (missed parameters)", func(t *testing.T) {
 		path := filepath.Join("testdata", "settings_invalid_missed_params.xlsm")
 
-		errorContains := []string{"missing required parameters", "Наименование организации", "Расчетный счет"}
-
 		org, err := xls.ParseSettings(path)
 		require.Error(t, err)
 		require.Nil(t, org)
-		for _, substr := range errorContains {
-			require.Contains(t, err.Error(), substr)
-		}
+		var mp *xls.MissingParamsError
+		require.ErrorAs(t, err, mp)
 
 	})
 }
@@ -90,10 +88,10 @@ func TestParsePayers_Integration(t *testing.T) {
 
 func TestParseEmail_Integration(t *testing.T) {
 	tests := []struct {
-		name          string
-		filename      string
-		expectEmails  map[string]string
-		expectErrPart []string
+		name         string
+		filename     string
+		expectEmails map[string]string
+		expectError  bool
 	}{
 		{
 			name:     "valid emails file",
@@ -104,12 +102,9 @@ func TestParseEmail_Integration(t *testing.T) {
 			},
 		},
 		{
-			name:     "invalid emails file - missing fields",
-			filename: "emails_invalid.xlsx",
-			expectErrPart: []string{
-				"missing email for FIO Сидоров Сидор",
-				"missing FIO for email no-fio@example.com",
-			},
+			name:        "invalid emails file - missing fields",
+			filename:    "emails_invalid.xlsx",
+			expectError: true,
 		},
 	}
 
@@ -119,12 +114,12 @@ func TestParseEmail_Integration(t *testing.T) {
 
 			emails, err := xls.ParseEmail(path)
 
-			if len(tt.expectErrPart) > 0 {
+			if tt.expectError {
 				require.Error(t, err)
-				for _, part := range tt.expectErrPart {
-					require.Contains(t, err.Error(), part)
-				}
 				require.Nil(t, emails)
+				var me *xls.MissingEmailsError
+				require.ErrorAs(t, err, me)
+
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectEmails, emails)

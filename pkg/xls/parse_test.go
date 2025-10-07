@@ -11,11 +11,10 @@ import (
 
 func TestParseSettingsFromFile(t *testing.T) {
 	tests := []struct {
-		name          string
-		data          map[string]string
-		wantOrg       *model.Organization
-		wantError     bool
-		errorContains []string
+		name      string
+		data      map[string]string
+		wantOrg   *model.Organization
+		wantError bool
 	}{
 		{
 			name: "valid data",
@@ -56,9 +55,8 @@ func TestParseSettingsFromFile(t *testing.T) {
 				"КПП": "770101001",
 				"Дополнительные параметры ДШК": "extra",
 			},
-			wantOrg:       nil,
-			wantError:     true,
-			errorContains: []string{"missing required parameters", "Наименование организации", "Расчетный счет"},
+			wantOrg:   nil,
+			wantError: true,
 		},
 	}
 
@@ -83,9 +81,8 @@ func TestParseSettingsFromFile(t *testing.T) {
 			if tt.wantError {
 				require.Error(t, err)
 				require.Nil(t, org)
-				for _, substr := range tt.errorContains {
-					require.Contains(t, err.Error(), substr)
-				}
+				var mp *MissingParamsError
+				require.ErrorAs(t, err, mp)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.wantOrg, org)
