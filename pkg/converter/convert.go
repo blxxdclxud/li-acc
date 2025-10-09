@@ -11,30 +11,24 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 )
 
 // Converter struct manages API operations of the converter.
 // The methods are general for all kinds of conversion, except ExcelToPdf.
 type Converter struct {
-	token   string // auth token of API
+	apiKey  string // auth token of API
 	baseUrl string
 	client  HTTPClient
 }
 
 // NewConverter is initializer of the Converter object, generates auth token and stores in field `token`
-func NewConverter(baseUrl, publicKey, privateKey string) (*Converter, error) {
+func NewConverter(baseUrl, publicKey string) *Converter {
 	c := Converter{
 		baseUrl: strings.TrimRight(baseUrl, "/"),
 		client:  RealClient{},
+		apiKey:  publicKey,
 	}
-
-	token, err := c.generateToken(publicKey, privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate auth token: %w", err)
-	}
-	c.token = token
-	return &c, nil
+	return &c
 }
 
 // endpoint returns the complete API url for given path, using the base Converter.baseUrl
@@ -47,88 +41,59 @@ func (c *Converter) endpoint(path string) (string, error) {
 // Used here ComPDFKit API requires to perform following steps to convert the file:
 // Create Task, Upload File, Execute the conversion of the uploaded file, Get the download link of the converted file.
 func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conversion) error {
-	// taskId is the ID of created task, used in next requests
-	taskId, err := c.createTask(conversionType)
-	if err != nil {
-		return errs.Wrap(errs.System, "failed to create task", err)
-	}
-
-	// fileKey is ID of uploaded file
-	fileKey, err := c.uploadFile(taskId, inFilepath)
+	fileInfo, err := c.processConversion(inFilepath, conversionType)
 	if err != nil {
 		return errs.Wrap(errs.System, "failed to upload file", err)
 	}
 
-	err = c.executeConversion(taskId)
+	fileUrl, err := getFileUrl(fileInfo)
 	if err != nil {
-		return errs.Wrap(errs.System, "failed to execute conversion", err)
-	}
-
-	downloadUrl, err := c.getConvertedFileUrl(fileKey)
-
-	if err != nil {
-		return errs.Wrap(errs.System, "failed to fetch url of converted file", err)
-	}
-	if downloadUrl == "" {
-		return errs.Wrap(errs.System, "fetched empty downloadUrl, err is nil", nil)
+		return errs.Wrap(errs.System, "failed to get file download url", err)
 	}
 
 	// download file from the obtained link and store to [outFilepath]
-	err = downloadFile(downloadUrl, outFilepath)
+	err = downloadFile(fileUrl, outFilepath)
 	if err != nil {
 		return errs.Wrap(errs.System, "failed to download file", err)
 	}
 	return nil
 }
 
-// generateToken generates temporary auth token via API call. Token places in other requests' headers.
-func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
-	if publicKey == "" || secretKey == "" {
-		return "", fmt.Errorf("missing API keys in environment variables")
-	}
-
-	content := map[string]string{
-		"publicKey": publicKey,
-		"secretKey": secretKey,
-	}
-
-	contentJson, _ := json.Marshal(content)
-
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	var tr TokenResponse
-
-	err := c.doJSONRequest(http.MethodPost, EndpointToken, bytes.NewReader(contentJson), headers, nil, &tr)
+// processConversion perform file conversion using API. It uploads file to the server, sets api key in headers
+// and performs request.
+func (c *Converter) processConversion(filepath string, conversion Conversion) (ProcessConversionResponse, error) {
+	body, formDataType, err := buildMultipartBody(filepath)
 	if err != nil {
-		return "", err
+		return ProcessConversionResponse{}, err
 	}
 
-	return tr.Data.AccessToken, nil
+	// Prepare request headers (add multipart content type)
+	headers := map[string]string{
+		"x-api-key":    c.apiKey,
+		"Content-Type": formDataType,
+	}
+
+	var resp ProcessConversionResponse
+
+	// Send the multipart request and decode JSON response into `resp`
+	err = c.doJSONRequest(http.MethodPost, conversion.ConversionFormatEndpoint(), body, headers, nil, &resp)
+	if err != nil {
+		return ProcessConversionResponse{}, err
+	}
+
+	// Return the API response model
+	return resp, nil
 }
 
-// createTask creates the task via API call, when task is opened, we can attach the files and perform conversions.
-func (c *Converter) createTask(conversion Conversion) (string, error) {
-	headers := map[string]string{
-		"Authorization": "Bearer " + c.token,
-	}
-
-	var tr CreateTaskResponse
-	err := c.doJSONRequest(http.MethodGet, conversion.CreateTaskEndpoint(), nil, headers, nil, &tr)
-	if err != nil {
-		return "", err
-	}
-
-	return tr.Data.TaskId, nil
-}
-
-// uploadFile uploads files to the server and attaches them to recently created task by [taskId]
-func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
+// buildMultipartBody creates a multipart/form-data request body for file upload.
+// The function opens the file at the specified `filepath`, reads its contents, and forms
+// a multipart body with a "file" field.
+// Returns the finished request body, the corresponding 'Content-Type' header and an error if the operation fails.
+func buildMultipartBody(filepath string) (io.Reader, string, error) {
 	// Open the file that will be uploaded to the converter API
 	file, err := os.Open(filepath)
 	if err != nil {
-		return "", errs.WrapIOError("open file to upload it to converter API", filepath, err)
+		return nil, "", errs.WrapIOError("open file to upload it to converter API", filepath, err)
 	}
 	defer file.Close()
 
@@ -139,88 +104,33 @@ func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
 	// Attach the file under the form field "file"
 	part, err := writer.CreateFormFile("file", filepath)
 	if err != nil {
-		return "", fmt.Errorf("create multipart form file: %w", err)
+		return nil, "", fmt.Errorf("create multipart form file: %w", err)
 	}
 
 	// Copy file contents into the form
 	if _, err = io.Copy(part, file); err != nil {
-		return "", err
-	}
-
-	// Add the task ID as a form field
-	if err = writer.WriteField("taskId", taskId); err != nil {
-		return "", err
+		return nil, "", fmt.Errorf("copy file contents into the multipart form: %w", err)
 	}
 
 	// Finalize the multipart body before sending
 	if err = writer.Close(); err != nil {
-		return "", err
+		return nil, "", err
 	}
 
-	// Prepare request headers (add multipart content type)
-	headers := map[string]string{
-		"Authorization": "Bearer " + c.token,
-		"Content-Type":  writer.FormDataContentType(),
-	}
-
-	var fr UploadFileResponse
-
-	// Send the multipart request and decode JSON response into `fr`
-	err = c.doJSONRequest(http.MethodPost, EndpointUploadFile, body, headers, nil, &fr)
-	if err != nil {
-		return "", err
-	}
-
-	// Return the file key from API response
-	return fr.Data.FileKey, nil
+	return body, writer.FormDataContentType(), nil
 }
 
-// executeConversion converts uploaded Excel file to PDF
-func (c *Converter) executeConversion(taskId string) error {
-	params := map[string]string{
-		"taskId": taskId,
-	}
-	headers := map[string]string{
-		"Authorization": "Bearer " + c.token,
-	}
+func getFileUrl(fileInfo ProcessConversionResponse) (string, error) {
+	fileUrl := fileInfo.Data.FileInfo[0].DownloadUrl
+	status := fileInfo.Data.FileInfo[0].Status
 
-	err := c.doJSONRequest(http.MethodGet, EndpointConvert, nil, headers, params, nil)
-	if err != nil {
-		return err
+	if status != "success" {
+		return "", fmt.Errorf("file conversion status is not 'success'")
+	} else if fileUrl == "" {
+		return "", fmt.Errorf("file download url from API response is empty")
 	}
 
-	return nil
-}
-
-// getConvertedFileUrl fetches converted file download URL from json response of the API
-func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
-
-	var gr GetConvertedResponse
-
-	// file conversion can be not finished, when fetching its dowloadUrl
-	// so try to fetch it again, if downloadUrl=""
-	for {
-		gr = GetConvertedResponse{}
-		params := map[string]string{
-			"fileKey": fileKey,
-		}
-		headers := map[string]string{
-			"Authorization": "Bearer " + c.token,
-		}
-
-		err := c.doJSONRequest(http.MethodGet, EndpointGetConverted, nil, headers, params, &gr)
-		if err != nil {
-			return "", err
-		}
-
-		// ensure that file indeed converted and download link is ready
-		if gr.Data.FileUrl != "" {
-			break
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-	return gr.Data.FileUrl, nil
+	return fileUrl, nil
 }
 
 // downloadFile gets file download URL as [url] parameter, gets its binary data and writes to the file [filename].
@@ -272,7 +182,7 @@ func (c *Converter) doJSONRequest(
 ) error {
 
 	// generate the complete API url
-	fullURL, err := c.endpoint(endpoint)
+	fullURL, _ := c.endpoint(endpoint)
 
 	// Build the base URL
 	reqURL, err := url.Parse(fullURL)

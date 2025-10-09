@@ -1,25 +1,10 @@
 package converter
 
-type TokenResponse struct {
+type ProcessConversionResponse struct {
 	Data struct {
-		AccessToken string `json:"accessToken"`
-	} `json:"data"`
-}
-
-type CreateTaskResponse struct {
-	Data struct {
-		TaskId string `json:"taskId"`
-	} `json:"data"`
-}
-
-type UploadFileResponse struct {
-	Data struct {
-		FileKey string `json:"fileKey"`
-	} `json:"data"`
-}
-
-type GetConvertedResponse struct {
-	Data struct {
-		FileUrl string `json:"downloadUrl"`
+		FileInfo []struct {
+			DownloadUrl string `json:"downloadUrl"`
+			Status      string `json:"status"`
+		} `json:"fileInfoDTOList"`
 	} `json:"data"`
 }

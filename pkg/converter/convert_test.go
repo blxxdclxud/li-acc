@@ -3,6 +3,7 @@ package converter
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,139 +21,82 @@ func (f FakeClient) Do(req *http.Request) (*http.Response, error) {
 	return f.DoFunc(req)
 }
 
-// ---- Tests for generateToken ----
-func TestGenerateToken(t *testing.T) {
-	tests := []struct {
-		name        string
-		doFunc      func(*http.Request) (*http.Response, error)
-		wantToken   string
-		expectError bool
-	}{
-		{
-			name: "success",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				bodyStruct := TokenResponse{Data: struct {
-					AccessToken string `json:"accessToken"`
-				}{AccessToken: "correctToken-123456-test"}}
-				bodyBytes, _ := json.Marshal(bodyStruct)
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBuffer(bodyBytes)),
-				}, nil
-			},
-			wantToken:   "correctToken-123456-test",
-			expectError: false,
-		},
-		{
-			name: "bad response",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: 500,
-					Body:       io.NopCloser(bytes.NewBufferString("internal error")),
-				}, nil
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Converter{client: &FakeClient{DoFunc: tt.doFunc}}
-			token, err := c.generateToken("foo", "bar")
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.wantToken, token)
-			}
-		})
-	}
-}
-
-// ---- Tests for createTask ----
-func TestCreateTask(t *testing.T) {
-	tests := []struct {
-		name        string
-		doFunc      func(*http.Request) (*http.Response, error)
-		wantTaskID  string
-		expectError bool
-	}{
-		{
-			name: "success",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				bodyStruct := CreateTaskResponse{Data: struct {
-					TaskId string `json:"taskId"`
-				}{TaskId: "task-123"}}
-				bodyBytes, _ := json.Marshal(bodyStruct)
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBuffer(bodyBytes)),
-				}, nil
-			},
-			wantTaskID:  "task-123",
-			expectError: false,
-		},
-		{
-			name: "bad response",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: 500,
-					Body:       io.NopCloser(bytes.NewBufferString("internal error")),
-				}, nil
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Converter{client: &FakeClient{DoFunc: tt.doFunc}, token: "dummy-token"}
-			taskID, err := c.createTask(Conversion{"docx", "pdf"})
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.wantTaskID, taskID)
-			}
-		})
-	}
-}
-
-// ---- Tests for uploadFile ----
-func TestUploadFile(t *testing.T) {
-	tmpFile, _ := os.CreateTemp("", "upload-test-*.txt")
+// ---- Tests for processConversion ----
+func TestProcessConversion(t *testing.T) {
+	tmpFile, _ := os.CreateTemp("", "conversion-test-*.txt")
 	defer os.Remove(tmpFile.Name())
 
 	tests := []struct {
 		name        string
 		doFunc      func(*http.Request) (*http.Response, error)
-		wantFileKey string
 		expectError bool
+		wantResp    ProcessConversionResponse
 	}{
 		{
 			name: "success",
 			doFunc: func(req *http.Request) (*http.Response, error) {
-				bodyStruct := UploadFileResponse{Data: struct {
-					FileKey string `json:"fileKey"`
-				}{FileKey: "file-456"}}
+				require.Equal(t, "dummy-key", req.Header.Get("x-api-key"))
+				require.Contains(t, req.Header.Get("Content-Type"), "multipart/form-data")
+
+				bodyStruct := ProcessConversionResponse{
+					Data: struct {
+						FileInfo []struct {
+							DownloadUrl string `json:"downloadUrl"`
+							Status      string `json:"status"`
+						} `json:"fileInfoDTOList"`
+					}{
+						FileInfo: []struct {
+							DownloadUrl string `json:"downloadUrl"`
+							Status      string `json:"status"`
+						}{
+							{
+								DownloadUrl: "file-download/134253566",
+								Status:      "success",
+							},
+						},
+					},
+				}
 				bodyBytes, _ := json.Marshal(bodyStruct)
+
 				return &http.Response{
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(bodyBytes)),
 				}, nil
 			},
-			wantFileKey: "file-456",
+			wantResp: ProcessConversionResponse{
+				Data: struct {
+					FileInfo []struct {
+						DownloadUrl string `json:"downloadUrl"`
+						Status      string `json:"status"`
+					} `json:"fileInfoDTOList"`
+				}{
+					FileInfo: []struct {
+						DownloadUrl string `json:"downloadUrl"`
+						Status      string `json:"status"`
+					}{
+						{
+							DownloadUrl: "file-download/134253566",
+							Status:      "success",
+						},
+					},
+				},
+			},
 			expectError: false,
 		},
 		{
-			name: "bad response",
+			name: "server error",
 			doFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: 500,
-					Body:       io.NopCloser(bytes.NewBufferString("upload failed")),
+					Body:       io.NopCloser(bytes.NewBufferString("internal server error")),
 				}, nil
+			},
+			expectError: true,
+		},
+		{
+			name: "http client error",
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return nil, fmt.Errorf("connection refused")
 			},
 			expectError: true,
 		},
@@ -160,107 +104,22 @@ func TestUploadFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Converter{client: &FakeClient{DoFunc: tt.doFunc}, token: "dummy-token"}
-			fileKey, err := c.uploadFile("task-123", tmpFile.Name())
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.wantFileKey, fileKey)
+			c := &Converter{
+				client: &FakeClient{DoFunc: tt.doFunc},
+				apiKey: "dummy-key",
 			}
-		})
-	}
-}
 
-// ---- Tests for executeConversion ----
-func TestExecuteConversion(t *testing.T) {
-	tests := []struct {
-		name        string
-		doFunc      func(*http.Request) (*http.Response, error)
-		expectError bool
-	}{
-		{
-			name: "success",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBufferString("{}")),
-				}, nil
-			},
-			expectError: false,
-		},
-		{
-			name: "bad response",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: 500,
-					Body:       io.NopCloser(bytes.NewBufferString("conversion error")),
-				}, nil
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Converter{client: &FakeClient{DoFunc: tt.doFunc}, token: "dummy-token"}
-			err := c.executeConversion("task-123")
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
+			conversion := Conversion{
+				From: "docx", To: "pdf",
 			}
-		})
-	}
-}
 
-// ---- Tests for getConvertedFileUrl ----
-func TestGetConvertedFileUrl(t *testing.T) {
-	tests := []struct {
-		name        string
-		doFunc      func(*http.Request) (*http.Response, error)
-		wantURL     string
-		expectError bool
-	}{
-		{
-			name: "success",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				bodyStruct := GetConvertedResponse{Data: struct {
-					FileUrl string `json:"downloadUrl"`
-				}{FileUrl: "https://example.com/file.pdf"}}
-				bodyBytes, _ := json.Marshal(bodyStruct)
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBuffer(bodyBytes)),
-				}, nil
-			},
-			wantURL:     "https://example.com/file.pdf",
-			expectError: false,
-		},
-		{
-			name: "bad response",
-			doFunc: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: 500,
-					Body:       io.NopCloser(bytes.NewBufferString("failed")),
-				}, nil
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Converter{client: &FakeClient{DoFunc: tt.doFunc}, token: "dummy-token"}
-			url, err := c.getConvertedFileUrl("file-456")
+			resp, err := c.processConversion(tmpFile.Name(), conversion)
 
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.wantURL, url)
+				require.Equal(t, tt.wantResp, resp)
 			}
 		})
 	}

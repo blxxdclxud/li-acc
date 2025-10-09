@@ -20,6 +20,6 @@ type Conversion struct {
 	To   string
 }
 
-func (c Conversion) CreateTaskEndpoint() string {
-	return fmt.Sprintf("/task/%s/%s", strings.ToLower(c.From), strings.ToLower(c.To))
+func (c Conversion) ConversionFormatEndpoint() string {
+	return fmt.Sprintf("/process/%s/%s", strings.ToLower(c.From), strings.ToLower(c.To))
 }

@@ -4,7 +4,6 @@ package integration
 
 import (
 	"encoding/json"
-	"fmt"
 	"li-acc/pkg/converter"
 	"net/http"
 	"net/http/httptest"
@@ -22,40 +21,29 @@ var conversion = converter.Conversion{From: "docx", To: "pdf"}
 func newFakeConvertServer(t *testing.T, downloadContent []byte) *httptest.Server {
 	mux := http.NewServeMux()
 
-	createTaskEndpoint := conversion.CreateTaskEndpoint()
-
-	mux.HandleFunc(converter.EndpointToken, func(w http.ResponseWriter, r *http.Request) {
-		resp := converter.TokenResponse{Data: struct {
-			AccessToken string `json:"accessToken"`
-		}{AccessToken: "token-123"}}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc(createTaskEndpoint, func(w http.ResponseWriter, r *http.Request) {
-		resp := converter.CreateTaskResponse{Data: struct {
-			TaskId string `json:"taskId"`
-		}{TaskId: "task-123"}}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc(converter.EndpointUploadFile, func(w http.ResponseWriter, r *http.Request) {
-		resp := converter.UploadFileResponse{Data: struct {
-			FileKey string `json:"fileKey"`
-		}{FileKey: "file-456"}}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc(converter.EndpointConvert, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "{}")
-	})
-
 	ts := httptest.NewServer(mux)
 
 	fileDownloadUrl := "/download/file-456"
-	mux.HandleFunc(converter.EndpointGetConverted, func(w http.ResponseWriter, r *http.Request) {
-		resp := converter.GetConvertedResponse{Data: struct {
-			FileUrl string `json:"downloadUrl"`
-		}{FileUrl: ts.URL + fileDownloadUrl}}
+
+	mux.HandleFunc(conversion.ConversionFormatEndpoint(), func(w http.ResponseWriter, r *http.Request) {
+		resp := converter.ProcessConversionResponse{
+			Data: struct {
+				FileInfo []struct {
+					DownloadUrl string `json:"downloadUrl"`
+					Status      string `json:"status"`
+				} `json:"fileInfoDTOList"`
+			}{
+				FileInfo: []struct {
+					DownloadUrl string `json:"downloadUrl"`
+					Status      string `json:"status"`
+				}{
+					{
+						DownloadUrl: ts.URL + fileDownloadUrl,
+						Status:      "success",
+					},
+				},
+			},
+		}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
@@ -76,8 +64,7 @@ func TestConvert_E2E(t *testing.T) {
 	defer server.Close()
 
 	// Патчим URL'ы на наш тестовый сервер
-	c, err := converter.NewConverter(server.URL, "public", "private")
-	require.NoError(t, err)
+	c := converter.NewConverter(server.URL, "public")
 
 	// Входной и выходной файлы
 	inFile, _ := os.CreateTemp("", "in-test-*.txt")
@@ -85,7 +72,7 @@ func TestConvert_E2E(t *testing.T) {
 	outFile := inFile.Name() + ".out"
 
 	// Вызываем сам метод
-	err = c.Convert(inFile.Name(), outFile, conversion)
+	err := c.Convert(inFile.Name(), outFile, conversion)
 	require.NoError(t, err)
 
 	// Проверяем, что на диске действительно то, что отдал сервер
