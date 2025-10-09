@@ -82,7 +82,7 @@ func TestParseSettingsFromFile(t *testing.T) {
 				require.Error(t, err)
 				require.Nil(t, org)
 				var mp *MissingParamsError
-				require.ErrorAs(t, err, mp)
+				require.ErrorAs(t, err, &mp)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.wantOrg, org)

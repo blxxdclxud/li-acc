@@ -37,7 +37,7 @@ func TestParseSettings_Integration(t *testing.T) {
 		require.Nil(t, org)
 
 		var ms *xls.MissingSheetError
-		require.ErrorAs(t, err, ms)
+		require.ErrorAs(t, err, &ms)
 	})
 
 	t.Run("invalid file (missed parameters)", func(t *testing.T) {
@@ -47,7 +47,7 @@ func TestParseSettings_Integration(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, org)
 		var mp *xls.MissingParamsError
-		require.ErrorAs(t, err, mp)
+		require.ErrorAs(t, err, &mp)
 
 	})
 }
@@ -118,7 +118,7 @@ func TestParseEmail_Integration(t *testing.T) {
 				require.Error(t, err)
 				require.Nil(t, emails)
 				var me *xls.MissingEmailsError
-				require.ErrorAs(t, err, me)
+				require.ErrorAs(t, err, &me)
 
 			} else {
 				require.NoError(t, err)

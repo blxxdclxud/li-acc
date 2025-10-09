@@ -22,7 +22,7 @@ var conversion = converter.Conversion{From: "docx", To: "pdf"}
 func newFakeConvertServer(t *testing.T, downloadContent []byte) *httptest.Server {
 	mux := http.NewServeMux()
 
-	createTaskEndpoint := conversion.Endpoint()
+	createTaskEndpoint := conversion.CreateTaskEndpoint()
 
 	mux.HandleFunc(converter.EndpointToken, func(w http.ResponseWriter, r *http.Request) {
 		resp := converter.TokenResponse{Data: struct {

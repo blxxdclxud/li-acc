@@ -228,8 +228,8 @@ func TestGetConvertedFileUrl(t *testing.T) {
 			name: "success",
 			doFunc: func(req *http.Request) (*http.Response, error) {
 				bodyStruct := GetConvertedResponse{Data: struct {
-					DownloadUrl string `json:"downloadUrl"`
-				}{DownloadUrl: "https://example.com/file.pdf"}}
+					FileUrl string `json:"downloadUrl"`
+				}{FileUrl: "https://example.com/file.pdf"}}
 				bodyBytes, _ := json.Marshal(bodyStruct)
 				return &http.Response{
 					StatusCode: 200,

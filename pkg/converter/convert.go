@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // Converter struct manages API operations of the converter.
@@ -41,21 +42,6 @@ func (c *Converter) endpoint(path string) (string, error) {
 	return url.JoinPath(c.baseUrl, path)
 }
 
-// newRequest is util function that creates http.Request object
-// using given http method, endpoint path and request body.
-func (c *Converter) newRequest(method, path string, body io.Reader) (*http.Request, error) {
-	// generate the complete API url
-	fullURL, err := c.endpoint(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to join url and endpoint: %w", err)
-	}
-	req, err := http.NewRequest(method, fullURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new <%s> request to %s: %w", method, fullURL, err)
-	}
-	return req, nil
-}
-
 // Convert converts given file to another format. Formats are given in [conversionType] argument.
 // Source file's path is passed as [inFilepath], result file is stored as [outFilepath].
 // Used here ComPDFKit API requires to perform following steps to convert the file:
@@ -83,6 +69,9 @@ func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conve
 	if err != nil {
 		return errs.Wrap(errs.System, "failed to fetch url of converted file", err)
 	}
+	if downloadUrl == "" {
+		return errs.Wrap(errs.System, "fetched empty downloadUrl, err is nil", nil)
+	}
 
 	// download file from the obtained link and store to [outFilepath]
 	err = downloadFile(downloadUrl, outFilepath)
@@ -95,7 +84,7 @@ func (c *Converter) Convert(inFilepath, outFilepath string, conversionType Conve
 // generateToken generates temporary auth token via API call. Token places in other requests' headers.
 func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
 	if publicKey == "" || secretKey == "" {
-		return "", fmt.Errorf("missing API kes in environment variables")
+		return "", fmt.Errorf("missing API keys in environment variables")
 	}
 
 	content := map[string]string{
@@ -105,22 +94,14 @@ func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
 
 	contentJson, _ := json.Marshal(content)
 
-	req, _ := c.newRequest(http.MethodPost, EndpointToken, bytes.NewReader(contentJson))
-	req.Header.Add("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	headers := map[string]string{
+		"Content-Type": "application/json",
 	}
 
 	var tr TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+
+	err := c.doJSONRequest(http.MethodPost, EndpointToken, bytes.NewReader(contentJson), headers, nil, &tr)
+	if err != nil {
 		return "", err
 	}
 
@@ -129,106 +110,115 @@ func (c *Converter) generateToken(publicKey, secretKey string) (string, error) {
 
 // createTask creates the task via API call, when task is opened, we can attach the files and perform conversions.
 func (c *Converter) createTask(conversion Conversion) (string, error) {
-	req, _ := c.newRequest(http.MethodGet, conversion.Endpoint(), nil)
-	req.Header.Add("Authorization", "Bearer "+c.token)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
+	headers := map[string]string{
+		"Authorization": "Bearer " + c.token,
 	}
-	defer resp.Body.Close()
 
 	var tr CreateTaskResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	err := c.doJSONRequest(http.MethodGet, conversion.CreateTaskEndpoint(), nil, headers, nil, &tr)
+	if err != nil {
 		return "", err
 	}
+
 	return tr.Data.TaskId, nil
 }
 
 // uploadFile uploads files to the server and attaches them to recently created task by [taskId]
 func (c *Converter) uploadFile(taskId string, filepath string) (string, error) {
+	// Open the file that will be uploaded to the converter API
 	file, err := os.Open(filepath)
 	if err != nil {
 		return "", errs.WrapIOError("open file to upload it to converter API", filepath, err)
 	}
+	defer file.Close()
 
+	// Prepare multipart/form-data body
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
+
+	// Attach the file under the form field "file"
 	part, err := writer.CreateFormFile("file", filepath)
 	if err != nil {
-		return "", fmt.Errorf("closing multipart writer: %w", err)
+		return "", fmt.Errorf("create multipart form file: %w", err)
 	}
 
+	// Copy file contents into the form
 	if _, err = io.Copy(part, file); err != nil {
 		return "", err
 	}
-	err = writer.WriteField("taskId", taskId)
-	if err != nil {
+
+	// Add the task ID as a form field
+	if err = writer.WriteField("taskId", taskId); err != nil {
 		return "", err
 	}
 
-	err = writer.Close()
-	if err != nil {
+	// Finalize the multipart body before sending
+	if err = writer.Close(); err != nil {
 		return "", err
 	}
 
-	req, _ := c.newRequest(http.MethodPost, EndpointUploadFile, body)
-
-	req.Header.Add("Authorization", "Bearer "+c.token)
-	req.Header.Add("Content-Type", writer.FormDataContentType())
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
+	// Prepare request headers (add multipart content type)
+	headers := map[string]string{
+		"Authorization": "Bearer " + c.token,
+		"Content-Type":  writer.FormDataContentType(),
 	}
-	defer resp.Body.Close()
 
 	var fr UploadFileResponse
-	if err := json.NewDecoder(resp.Body).Decode(&fr); err != nil {
+
+	// Send the multipart request and decode JSON response into `fr`
+	err = c.doJSONRequest(http.MethodPost, EndpointUploadFile, body, headers, nil, &fr)
+	if err != nil {
 		return "", err
 	}
+
+	// Return the file key from API response
 	return fr.Data.FileKey, nil
 }
 
 // executeConversion converts uploaded Excel file to PDF
 func (c *Converter) executeConversion(taskId string) error {
-	req, _ := c.newRequest(http.MethodGet, EndpointConvert, nil)
-
-	params := req.URL.Query()
-	params.Add("taskId", taskId)
-	req.URL.RawQuery = params.Encode()
-
-	req.Header.Add("Authorization", "Bearer "+c.token)
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
+	params := map[string]string{
+		"taskId": taskId,
 	}
-	defer resp.Body.Close()
+	headers := map[string]string{
+		"Authorization": "Bearer " + c.token,
+	}
+
+	err := c.doJSONRequest(http.MethodGet, EndpointConvert, nil, headers, params, nil)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // getConvertedFileUrl fetches converted file download URL from json response of the API
 func (c *Converter) getConvertedFileUrl(fileKey string) (string, error) {
-	req, _ := c.newRequest(http.MethodGet, EndpointGetConverted, nil)
-
-	params := req.URL.Query()
-	params.Add("fileKey", fileKey)
-	req.URL.RawQuery = params.Encode()
-
-	req.Header.Add("Authorization", "Bearer "+c.token)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed request to %s: %w", req.URL.String(), err)
-	}
-	defer resp.Body.Close()
 
 	var gr GetConvertedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
-		return "", err
+
+	// file conversion can be not finished, when fetching its dowloadUrl
+	// so try to fetch it again, if downloadUrl=""
+	for {
+		gr = GetConvertedResponse{}
+		params := map[string]string{
+			"fileKey": fileKey,
+		}
+		headers := map[string]string{
+			"Authorization": "Bearer " + c.token,
+		}
+
+		err := c.doJSONRequest(http.MethodGet, EndpointGetConverted, nil, headers, params, &gr)
+		if err != nil {
+			return "", err
+		}
+
+		// ensure that file indeed converted and download link is ready
+		if gr.Data.FileUrl != "" {
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
 	}
 	return gr.Data.FileUrl, nil
 }
@@ -239,6 +229,7 @@ func downloadFile(url string, filename string) error {
 	if err != nil {
 		return fmt.Errorf("cannot dowload file from %s: %w", url, err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("converted file downloading failed failed. URL: %s, Code: %d",
@@ -264,20 +255,64 @@ func downloadFile(url string, filename string) error {
 
 }
 
-// performRequest creates default HTTP Client and performs the request [req]. Returns error if it is unsuccessful,
-// the response object otherwise.
-func performRequest(req *http.Request) (*http.Response, error) {
-	client := &http.Client{}
-	resp, err := client.Do(req)
+// doJSONRequest is a helper function for methods of Converter.
+// It forms the request with headers, performs the API call, checks response status for success and
+// decodes json response into `out` (expected that it is XxxxResponse structure from models.go)
+// `method`: HTTP method;
+// `endpoint`: an endpoint for the current API call (without base URL);
+// `body`: a body of the request;
+// `headers`: a map of HTTP request headers;
+// `params`: map of query params.
+func (c *Converter) doJSONRequest(
+	method, endpoint string,
+	body io.Reader,
+	headers map[string]string,
+	params map[string]string,
+	out any,
+) error {
+
+	// generate the complete API url
+	fullURL, err := c.endpoint(endpoint)
+
+	// Build the base URL
+	reqURL, err := url.Parse(fullURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to perform request %s: %w", req.URL.String(), err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("api request failed. URL: %s, Code: %d, response: %s",
-			req.URL.String(), resp.StatusCode, string(body))
+	// Attach query parameters if provided
+	if len(params) > 0 {
+		q := reqURL.Query()
+		for k, v := range params {
+			q.Set(k, v)
+		}
+		reqURL.RawQuery = q.Encode()
 	}
 
-	return resp, nil
+	// Build the HTTP request
+	req, err := http.NewRequest(method, fullURL, body)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	// Add headers
+	for k, v := range headers {
+		req.Header.Add(k, v)
+	}
+
+	// Send and process response
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request to %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	if err := checkResponseStatus(resp, fullURL); err != nil {
+		return err
+	}
+
+	if out != nil {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
 }
