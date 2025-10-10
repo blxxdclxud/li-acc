@@ -21,16 +21,12 @@ func NewSettingsRepository(repo *Repository) *SettingsRepository {
 func (r *SettingsRepository) GetLastSetting(ctx context.Context) (model.Settings, error) {
 	query := "SELECT ReceiptFile, Emails, QrPattern, SenderEmail FROM settings ORDER BY Id DESC LIMIT 1"
 
-	rows, err := r.db.DB.Query(ctx, query) // get all rows from the table corresponding the query
-	if err != nil {
-		return model.Settings{}, fmt.Errorf("error during fetching settings: %w", err)
-	}
-	defer rows.Close()
+	row := r.db.DB.QueryRow(ctx, query) // get a single row from the table corresponding the query
 
 	var setting model.Settings
 
 	// Fill all fields of the settings model with fetched data
-	err = rows.Scan(&setting.ReceiptFile, &setting.Emails, &setting.QrPattern, &setting.SenderEmail)
+	err := row.Scan(&setting.ReceiptFile, &setting.Emails, &setting.QrPattern, &setting.SenderEmail)
 	if err != nil {
 		return model.Settings{}, fmt.Errorf("error during scanning fetched setting: %w", err)
 	}

@@ -3,9 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	"li-acc/pkg/logger"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
-	"li-acc/pkg/logger"
 )
 
 // Repository stores DB's connection pool object to manage operations with it.
