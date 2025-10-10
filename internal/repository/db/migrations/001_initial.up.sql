@@ -1,12 +1,12 @@
 CREATE TABLE files (
-    Id INT PRIMARY KEY,
+    Id SERIAL PRIMARY KEY,
     FileName VARCHAR(256),
     File bytea,
     ModifiedDate timestamp
 );
 
 CREATE TABLE settings (
-    Id INT PRIMARY KEY,
+    Id SERIAL PRIMARY KEY,
     ReceiptFile bytea,
     Emails bytea,
     QrPattern VARCHAR(65535),
