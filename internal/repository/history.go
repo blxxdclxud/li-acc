@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// HistoryRepository stores the object ot the DB Repository to manage the CRUD operations.
+// HistoryRepository stores the object of the DB Repository to manage the CRUD operations.
 // Has following implemented methods: AddHistory
 type HistoryRepository struct {
 	db *Repository
@@ -31,4 +31,36 @@ func (r *HistoryRepository) AddHistory(ctx context.Context, file model.File) err
 		return fmt.Errorf("error during inserting to files table: %w", err)
 	}
 	return nil
+}
+
+// GetHistory retrieves all files from history table in DB.
+func (r *HistoryRepository) GetHistory(ctx context.Context) ([]model.File, error) {
+	rows, err := r.db.DB.Query(ctx,
+		`
+			SELECT FileName, File FROM files ORDER BY ModifiedDate DESC
+		`)
+	if err != nil {
+		return nil, fmt.Errorf("error during fetching history: %w", err)
+	}
+	defer rows.Close()
+
+	var files []model.File
+
+	for rows.Next() {
+		var file model.File
+
+		// Fill all fields of the file model with fetched data
+		err = rows.Scan(&file.FileName, &file.FileData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan history row: %w", err)
+		}
+
+		files = append(files, file)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over history rows: %w", err)
+	}
+
+	return files, nil
 }
