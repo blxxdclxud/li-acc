@@ -26,6 +26,7 @@ func TestHistoryRepository_AddHistory(t *testing.T) {
 	require.NoError(t, err)
 
 	files, err := h.GetHistory(context.Background())
+	require.NoError(t, err)
 	require.Equal(t, file, files[0])
 }
 

@@ -3,3 +3,6 @@ version: "2"
 linters:
   disable:
     - errcheck
+run:
+  build-tags:
+    - integration

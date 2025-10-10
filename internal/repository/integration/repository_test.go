@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"li-acc/internal/repository"
 	"li-acc/internal/repository/db"
 	"os"
@@ -37,8 +36,7 @@ func ensureDBReady(t *testing.T) {
 		require.NoError(t, err, "failed to connect to test DB")
 
 		migAbs, err := filepath.Abs(MigrationsDir)
-
-		fmt.Println(migAbs)
+		require.NoError(t, err)
 
 		applied, err := db.ApplyMigrations(testRepo.DB, migAbs)
 		require.NoError(t, err)
