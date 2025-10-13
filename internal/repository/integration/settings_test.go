@@ -4,101 +4,100 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"li-acc/internal/model"
 	"li-acc/internal/repository"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestSettingsRepository_AddSetting(t *testing.T) {
+func TestSettingsRepository_SetAndGetSettings(t *testing.T) {
 	ensureDBReady(t)
 
-	want := []model.Settings{
-		{
-			ReceiptFile: []byte(`test receipt file 1`),
-			Emails:      []byte(`{"test": "email"}`),
-			QrPattern:   "test qr pattern",
-			SenderEmail: "test-1@m.r",
-		},
-		{
-			ReceiptFile: []byte(`test receipt file 2`),
-			Emails:      []byte(`{"test": "email"}`),
-			QrPattern:   "test qr pattern",
-			SenderEmail: "test-2@m.r",
-		},
+	repo := repository.NewSettingsRepository(testRepo)
+
+	emails := map[string]string{
+		"John Doe":   "john@example.com",
+		"Jane Smith": "jane@example.com",
 	}
 
-	s := repository.NewSettingsRepository(testRepo)
-
-	for _, setting := range want {
-		err := s.AddSetting(context.Background(), setting)
-		require.NoError(t, err)
-
-		time.Sleep(1 * time.Second)
+	set := model.Settings{
+		Emails:      emails,
+		SenderEmail: "sender@test.com",
 	}
 
-	query := "SELECT ReceiptFile, Emails, QrPattern, SenderEmail FROM settings"
-
-	rows, err := testRepo.DB.Query(context.Background(), query) // get all rows from the table corresponding the query
-	require.NoError(t, err)
-	defer rows.Close()
-
-	var settings []model.Settings
-
-	for rows.Next() {
-		var setting model.Settings
-
-		// Fill all fields of the settings model with fetched data
-		err = rows.Scan(&setting.ReceiptFile, &setting.Emails, &setting.QrPattern, &setting.SenderEmail)
-		require.NoError(t, err)
-
-		settings = append(settings, setting)
-	}
-	err = rows.Err()
+	// Save the setting
+	err := repo.SetSettings(context.Background(), set)
 	require.NoError(t, err)
 
-	require.Equal(t, want, settings)
+	// Retrieve
+	got, err := repo.GetSettings(context.Background())
+	require.NoError(t, err)
+
+	require.Equal(t, set.SenderEmail, got.SenderEmail)
+	require.Equal(t, set.Emails, got.Emails)
 }
 
-func TestSettingsRepository_GetLastSetting(t *testing.T) {
+func TestSettingsRepository_SetEmails(t *testing.T) {
 	ensureDBReady(t)
 
-	in := []model.Settings{
-		{
-			ReceiptFile: []byte(`test receipt file firs`),
-			Emails:      []byte(`{"test": "email"}`),
-			QrPattern:   "first",
-			SenderEmail: "test-1@m.r",
-		},
-		{
-			ReceiptFile: []byte(`test receipt file 2`),
-			Emails:      []byte(`{"test": "email"}`),
-			QrPattern:   "last",
-			SenderEmail: "test-2@m.r",
-		},
+	repo := repository.NewSettingsRepository(testRepo)
+
+	// Initial emails
+	initialEmails := map[string]string{
+		"A": "a@test.com",
 	}
-
-	s := repository.NewSettingsRepository(testRepo)
-
-	// Add settings in the order as they come in `in`
-	time.Sleep(1 * time.Second)
-	for _, setting := range in {
-		query := "INSERT INTO settings (ReceiptFile, Emails, QrPattern, SenderEmail) VALUES ($1, $2, $3, $4)"
-
-		_, err := testRepo.DB.Exec(context.Background(), query,
-			setting.ReceiptFile, setting.Emails, setting.QrPattern, setting.SenderEmail)
-		require.NoError(t, err)
-
-		time.Sleep(1 * time.Second)
-	}
-
-	// Get last setting
-	last, err := s.GetLastSetting(context.Background())
+	err := repo.SetEmails(context.Background(), initialEmails)
 	require.NoError(t, err)
 
-	// Check that it is indeed last one
-	require.Equal(t, in[len(in)-1], last)
+	// Check stored value
+	var gotJSON string
+	err = testRepo.DB.QueryRow(context.Background(), `SELECT Emails FROM settings WHERE Id=1`).Scan(&gotJSON)
+	require.NoError(t, err)
 
+	var gotMap map[string]string
+	err = json.Unmarshal([]byte(gotJSON), &gotMap)
+	require.NoError(t, err)
+	require.Equal(t, initialEmails, gotMap)
+
+	// Update emails
+	newEmails := map[string]string{
+		"B": "b@test.com",
+		"C": "c@test.com",
+	}
+	err = repo.SetEmails(context.Background(), newEmails)
+	require.NoError(t, err)
+
+	gotMap = map[string]string{}
+
+	// Check updated
+	err = testRepo.DB.QueryRow(context.Background(), `SELECT Emails FROM settings WHERE Id=1`).Scan(&gotJSON)
+	require.NoError(t, err)
+	err = json.Unmarshal([]byte(gotJSON), &gotMap)
+	require.NoError(t, err)
+	require.Equal(t, newEmails, gotMap)
+}
+
+func TestSettingsRepository_SetSenderEmail(t *testing.T) {
+	ensureDBReady(t)
+
+	repo := repository.NewSettingsRepository(testRepo)
+
+	// Initial sender
+	err := repo.SetSenderEmail(context.Background(), "initial@test.com")
+	require.NoError(t, err)
+
+	var got string
+	err = testRepo.DB.QueryRow(context.Background(), `SELECT SenderEmail FROM settings WHERE Id=1`).Scan(&got)
+	require.NoError(t, err)
+	require.Equal(t, "initial@test.com", got)
+
+	// Update sender
+	err = repo.SetSenderEmail(context.Background(), "updated@test.com")
+	require.NoError(t, err)
+
+	err = testRepo.DB.QueryRow(context.Background(), `SELECT SenderEmail FROM settings WHERE Id=1`).Scan(&got)
+	require.NoError(t, err)
+	require.Equal(t, "updated@test.com", got)
 }
