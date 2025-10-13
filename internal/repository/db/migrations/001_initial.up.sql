@@ -7,8 +7,6 @@ CREATE TABLE files (
 
 CREATE TABLE settings (
     Id SERIAL PRIMARY KEY,
-    ReceiptFile bytea,
-    Emails bytea,
-    QrPattern VARCHAR(65535),
+    Emails VARCHAR(65535),
     SenderEmail VARCHAR(65535)
 );
