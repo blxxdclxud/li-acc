@@ -1,7 +1,6 @@
 package sender
 
 import (
-	"fmt"
 	"os"
 
 	"gopkg.in/gomail.v2"
@@ -24,7 +23,10 @@ type EmailStatus struct {
 
 // FormMessage forms the email message using gomail.Message instance. Fills in following parameters:
 // sender email, recipients' emails, subject, body text and the attachment if there is so.
-func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipientEmails ...string) *EmailStatus {
+// Returns *gomail.Message and the boolean:
+//
+//	false - if attachment path is empty or not found, true - otherwise
+func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipientEmails ...string) (*gomail.Message, bool) {
 	// Create new message
 	message := gomail.NewMessage()
 
@@ -34,21 +36,12 @@ func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipien
 
 	message.SetBody("text/plain", body)
 
-	var status string
-	statusType := Success
-
 	if attachmentFilePath != "" {
 		if _, err := os.Stat(attachmentFilePath); err == nil {
 			message.Attach(attachmentFilePath)
-		} else {
-			status = fmt.Sprintf("attachment not found, skipping: %v", err)
-			statusType = Info
+			return message, true
 		}
 	}
 
-	return &EmailStatus{
-		Msg:       message,
-		Status:    statusType,
-		StatusMsg: status,
-	}
+	return message, false
 }
