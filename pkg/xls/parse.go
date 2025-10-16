@@ -236,7 +236,7 @@ func ParseEmailFromFile(ss *excelize.File, sheet string) (map[string]string, err
 		}
 
 		// if both fields are present → add to map
-		emails[fio] = email
+		emails[strings.ToLower(fio)] = email
 	}
 
 	// if there were missing required fields, return them as error
