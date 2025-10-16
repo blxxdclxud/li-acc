@@ -100,7 +100,7 @@ func TestConvert_RealCase(t *testing.T) {
 
 	dst := path.Join(outDir, "converted.pdf")
 
-	err := converter.ExcelToPdf(xlsFilePath, dst, pubKey, secKey)
+	err := converter.ExcelToPdf(xlsFilePath, dst, pubKey)
 	require.NoError(t, err)
 
 	_, err = os.Stat(dst)
