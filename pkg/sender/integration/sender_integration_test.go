@@ -110,7 +110,8 @@ func TestSendEmail_SingleRecipient(t *testing.T) {
 
 	subject := "Single test"
 	body := "Hello from testcontainers single"
-	msgStatus := sender2.FormMessage(subject, body, "", senderEmail, recEmail)
+	msg, isAttach := sender2.FormMessage(subject, body, "", senderEmail, recEmail)
+	require.False(t, isAttach)
 
 	storeForSender := false
 
@@ -118,7 +119,7 @@ func TestSendEmail_SingleRecipient(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go sender.SendEmail(msgStatus.Msg, statusCh, &wg, storeForSender)
+	go sender.SendEmail(msg, statusCh, &wg, storeForSender)
 	wg.Wait()
 
 	res := <-statusCh
@@ -163,9 +164,10 @@ func TestSendEmail_MultipleRecipientsParallel(t *testing.T) {
 	for _, rec := range recEmails {
 		wg.Add(1)
 
-		msgStatus := sender2.FormMessage(subject, body, "", senderEmail, rec)
+		msg, isAttach := sender2.FormMessage(subject, body, "", senderEmail, rec)
+		require.False(t, isAttach)
 
-		go sender.SendEmail(msgStatus.Msg, statusCh, &wg, storeForSender)
+		go sender.SendEmail(msg, statusCh, &wg, storeForSender)
 	}
 
 	wg.Wait()
