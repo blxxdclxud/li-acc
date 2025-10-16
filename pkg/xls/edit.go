@@ -3,7 +3,6 @@ package xls
 import (
 	"fmt"
 	"li-acc/internal/errs"
-	intmodel "li-acc/internal/model"
 	"li-acc/pkg/model"
 	"strings"
 	"time"
@@ -15,8 +14,8 @@ const BlankReceiptPatternSheet = "receipt" // The only sheet in the .xls file th
 
 // getReceiptPatternFilePath returns file path for receipt pattern file.
 // To ensure that the name is unique it starts filename with string representation of time.Now() in specified format.
-func getReceiptPatternFilePath() string {
-	return fmt.Sprint(intmodel.ReceiptPatternsDir, "/", time.Now().Format("2.01.2006-15:04:05"), "_receipt_pattern.xlsx")
+func getReceiptPatternFilePath(dir string) string {
+	return fmt.Sprint(dir, "/", time.Now().Format("2.01.2006-15:04:05"), "_receipt_pattern.xlsx")
 }
 
 // WriteToCells writes sender's information given as `orgData` into given excelize.File.
@@ -68,7 +67,7 @@ func WriteToCells(f *excelize.File, orgData model.Organization) error {
 // FillOrganizationParamsInReceipt gets 'filepath' that is path to the .xls file that stores the blank pattern of the receipt.
 // Then calls fillParams() that fills this receipt with sender's information.
 // This information is stored in 'orgData'. Returns path of saved file.
-func FillOrganizationParamsInReceipt(filepath string, org model.Organization) (string, error) {
+func FillOrganizationParamsInReceipt(filepath, dstDir string, org model.Organization) (string, error) {
 	f, err := excelize.OpenFile(filepath)
 	if err != nil {
 		return "", errs.WrapIOError("open excel file - pattern of the receipt", filepath, err)
@@ -79,10 +78,10 @@ func FillOrganizationParamsInReceipt(filepath string, org model.Organization) (s
 		return "", errs.WrapIOError("write organisation parameters into file", filepath, err)
 	}
 
-	dstFilePath := getReceiptPatternFilePath()
+	dstFilePath := getReceiptPatternFilePath(dstDir)
 
 	if err := f.SaveAs(dstFilePath); err != nil {
-		return "", errs.WrapIOError("save excel file with organisation data", dstFilePath, err)
+		return "", errs.WrapIOError("save excel file with organization data", dstFilePath, err)
 	}
 	return dstFilePath, nil
 }

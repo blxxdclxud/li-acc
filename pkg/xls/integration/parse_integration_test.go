@@ -6,6 +6,7 @@ import (
 	"li-acc/pkg/model"
 	"li-acc/pkg/xls"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -122,7 +123,11 @@ func TestParseEmail_Integration(t *testing.T) {
 
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.expectEmails, emails)
+				want := make(map[string]string)
+				for name, email := range tt.expectEmails {
+					want[strings.ToLower(name)] = email
+				}
+				require.Equal(t, want, emails)
 			}
 		})
 	}

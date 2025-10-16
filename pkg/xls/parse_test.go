@@ -132,5 +132,5 @@ func TestParseEmailFromFile(t *testing.T) {
 	emails, err := ParseEmailFromFile(f, sheet)
 	require.NoError(t, err)
 	require.Len(t, emails, 1)
-	require.Equal(t, "ivanov@example.com", emails["Иванов И.И."])
+	require.Equal(t, "ivanov@example.com", emails["иванов и.и."])
 }

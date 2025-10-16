@@ -27,7 +27,6 @@ func TestFillOrganizationParamsInReceipt(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	template := filepath.Join(tmpDir, "template.xlsx")
-	output := filepath.Join(tmpDir, "filled.xlsx")
 
 	// создаём минимальный шаблон
 	f := excelize.NewFile()
@@ -36,14 +35,13 @@ func TestFillOrganizationParamsInReceipt(t *testing.T) {
 		t.Fatalf("failed to save template: %v", err)
 	}
 
-	xls.FillerReceiptPatternFileName = output
-
-	if err := xls.FillOrganizationParamsInReceipt(template, org); err != nil {
+	dstPath, err := xls.FillOrganizationParamsInReceipt(template, tmpDir, org)
+	if err != nil {
 		t.Fatalf("FillOrganizationParamsInReceipt returned error: %v", err)
 	}
 
 	// открываем результат
-	res, err := excelize.OpenFile(output)
+	res, err := excelize.OpenFile(dstPath)
 	if err != nil {
 		t.Fatalf("failed to open result: %v", err)
 	}
