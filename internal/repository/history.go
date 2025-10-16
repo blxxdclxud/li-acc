@@ -26,7 +26,7 @@ func (r *HistoryRepository) AddHistory(ctx context.Context, file model.File) err
 			INSERT INTO files (FileName, File, ModifiedDate) 
 			VALUES ($1, $2, $3)
 		`,
-		file.FileName, file.FileData, time.Now().Format("02-01-2006 15:04:05"))
+		file.FileName, file.FileData, time.Now())
 	if err != nil {
 		return fmt.Errorf("error during inserting to files table: %w", err)
 	}
