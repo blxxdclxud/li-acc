@@ -22,16 +22,16 @@ type EmailStatus struct {
 }
 
 // FormMessage forms the email message using gomail.Message instance. Fills in following parameters:
-// sender email, recipients' emails, subject, body text and the attachment if there is so.
+// sender email, single recipient's email, subject, body text and the attachment if there is so.
 // Returns *gomail.Message and the boolean:
 //
 //	false - if attachment path is empty or not found, true - otherwise
-func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipientEmails ...string) (*gomail.Message, bool) {
+func FormMessage(subject, body, attachmentFilePath, senderEmail string, recipientEmail string) (*gomail.Message, bool) {
 	// Create new message
 	message := gomail.NewMessage()
 
 	message.SetHeader("From", senderEmail)
-	message.SetHeader("To", recipientEmails...)
+	message.SetHeader("To", recipientEmail)
 	message.SetHeader("Subject", subject)
 
 	message.SetBody("text/plain", body)

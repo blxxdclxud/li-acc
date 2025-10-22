@@ -2,10 +2,14 @@ package sender
 
 import (
 	"fmt"
-	"sync"
 
 	"gopkg.in/gomail.v2"
 )
+
+type MailSender interface {
+	SendEmail(msg *gomail.Message, status chan EmailStatus, storeForSender bool)
+	GetSenderEmail() string
+}
 
 // Sender represents entity that sends messages using SmtpPort.
 // Stores parameters that are necessary for sender:
@@ -32,8 +36,7 @@ func NewSender(smtpHost string, smtpPort int, senderEmail, senderPassword string
 // SendEmail method sends the message [Msg] using SMTP. Expecting execution in parallel goroutine,
 // so requires sync.WaitGroup [wg] and chanel of for EmailStatus, where the error will be stored, if occurs.
 // Set storeForSender as true, if you want to store the mail in sender's mailbox, false otherwise.
-func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, wg *sync.WaitGroup, storeForSender bool) {
-	defer wg.Done()
+func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, storeForSender bool) {
 	emailStatus := EmailStatus{Msg: msg, Status: Success, StatusMsg: ""}
 
 	if storeForSender {
@@ -54,4 +57,8 @@ func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, wg *syn
 		emailStatus.Cause = err
 	}
 	status <- emailStatus
+}
+
+func (s *Sender) GetSenderEmail() string {
+	return s.SenderEmail
 }

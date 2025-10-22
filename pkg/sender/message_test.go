@@ -10,9 +10,9 @@ import (
 
 func TestFormMessage(t *testing.T) {
 	t.Run("without attachment", func(t *testing.T) {
-		email, isAttach := FormMessage("Subject", "Body", "", "sender@test.com", "rec1@test.com", "rec2@test.com")
+		email, isAttach := FormMessage("Subject", "Body", "", "sender@test.com", "rec1@test.com")
 		require.Equal(t, []string{"sender@test.com"}, email.GetHeader("From"))
-		require.Equal(t, []string{"rec1@test.com", "rec2@test.com"}, email.GetHeader("To"))
+		require.Equal(t, []string{"rec1@test.com"}, email.GetHeader("To"))
 		require.Equal(t, isAttach, false)
 	})
 
