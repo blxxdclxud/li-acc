@@ -5,7 +5,6 @@ import (
 	"errors"
 	"li-acc/internal/errs"
 	"li-acc/internal/model"
-	"li-acc/pkg/xls"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,20 +49,6 @@ func (m *mockSettingsRepo) SetEmails(ctx context.Context, emails map[string]stri
 func (m *mockSettingsRepo) SetSenderEmail(ctx context.Context, email string) error {
 	m.lastSetSenderEmail = email
 	return m.setSenderEmailErr
-}
-
-// ---- Mock XLS parser ----
-
-var parseEmailFunc = xls.ParseEmail
-
-func mockParseEmailSuccess(path string) (map[string]string, error) {
-	return map[string]string{"fio": "fio@example.com"}, nil
-}
-func mockParseEmailFailUser(path string) (map[string]string, error) {
-	return nil, errs.New(errs.User, "invalid format")
-}
-func mockParseEmailFailSystem(path string) (map[string]string, error) {
-	return nil, errors.New("parse failed")
 }
 
 // ---- Tests ----
