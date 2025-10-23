@@ -18,7 +18,7 @@ import (
 const defaultMaxParallel = 10
 
 type MailService interface {
-	SendMails(ctx context.Context, mail model.Mail) error
+	SendMails(ctx context.Context, mail model.Mail) (int, error)
 	GetSenderEmail() string
 }
 type mailService struct {
@@ -36,8 +36,8 @@ func NewMailService(smtp model.SMTP) MailService {
 //
 // The method launches up to [maxParallel] concurrent senders to avoid overloading the SMTP server.
 // Each goroutine reports its result into a channel [sent]. When all emails are processed,
-// it collects all errors (if any) and returns a combined error message.
-func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
+// it collects all errors (if any) and returns amount of sent mails and a combined error message.
+func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, error) {
 	start := time.Now()
 	maxParallel := defaultMaxParallel // limit of simultaneous SMTP sends
 
@@ -50,7 +50,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	if len(mail.To) == 0 {
 		err := errors.New("no recipients provided")
 		logger.Warn("SendMails validation failedMails", zap.Error(err))
-		return fmt.Errorf("validation error: %w", err)
+		return 0, fmt.Errorf("validation error: %w", err)
 	}
 
 	// concurrency controls
@@ -62,7 +62,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	case <-ctx.Done():
 		err := ctx.Err()
 		logger.Warn("SendMails aborted - context canceled", zap.Error(err))
-		return fmt.Errorf("operation canceled: %w", err)
+		return 0, fmt.Errorf("operation canceled: %w", err)
 	default:
 	}
 
@@ -117,6 +117,8 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	// Collect results
 	failedMails := make(map[string]string)
 	failedAttachments := make(map[string]string)
+	totalSent := 0
+
 	for status := range statusChan {
 		fmt.Println(status)
 		if status.Status == sender.Error {
@@ -140,6 +142,8 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 				}
 			}
 
+		} else {
+			totalSent++
 		}
 	}
 
@@ -147,14 +151,15 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	logger.Info("SendMails completed",
 		zap.Int("recipients_total", len(mail.To)),
 		zap.Int("failed_count", len(failedMails)),
+		zap.Int("sent_count", len(failedMails)),
 		zap.Duration("elapsed", duration),
 	)
 
 	if len(failedMails) > 0 {
-		return &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
+		return totalSent, &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
 	}
 
-	return nil
+	return totalSent, nil
 }
 
 func (m *mailService) GetSenderEmail() string {

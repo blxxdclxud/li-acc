@@ -38,10 +38,18 @@ func (m *mockHistoryService) GetRecords(ctx context.Context) ([]model.File, erro
 	return nil, nil
 }
 
-type mockMailService struct{ sendErr error }
+type mockMailService struct {
+	sentCount int
+	sendErr   error
+}
 
-func (m *mockMailService) SendMails(ctx context.Context, mail model.Mail) error { return m.sendErr }
-func (m *mockMailService) GetSenderEmail() string                               { return "sender@example.com" }
+func (m *mockMailService) SendMails(ctx context.Context, mail model.Mail) (int, error) {
+	return m.sentCount, m.sendErr
+}
+
+func (m *mockMailService) GetSenderEmail() string {
+	return "sender@example.com"
+}
 
 type mockFileStorage struct {
 	path string
@@ -124,9 +132,10 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{},
 			orgParser:   &mockOrgParser{},
 		}
-		_, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
 		require.Error(t, err)
 		require.True(t, errs.IsSystemError(err))
+		require.Equal(t, sentCount, 0)
 	})
 
 	t.Run("store fail", func(t *testing.T) {
@@ -136,9 +145,10 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{},
 			orgParser:   &mockOrgParser{},
 		}
-		_, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
 		require.Error(t, err)
 		require.True(t, errs.IsSystemError(err))
+		require.Equal(t, sentCount, 0)
 	})
 
 	t.Run("parse payers fail", func(t *testing.T) {
@@ -148,9 +158,10 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{err: errors.New("bad format")},
 			orgParser:   &mockOrgParser{},
 		}
-		_, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "bad format")
+		require.Equal(t, sentCount, 0)
 	})
 
 	t.Run("parse org fail", func(t *testing.T) {
@@ -160,9 +171,10 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{payers: []pkg.Payer{{CHILDFIO: "Jane"}}},
 			orgParser:   &mockOrgParser{err: errors.New("org fail")},
 		}
-		_, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "file.xlsx", []byte("data"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "org fail")
+		require.Equal(t, sentCount, 0)
 	})
 
 	t.Run("history fail", func(t *testing.T) {
@@ -173,9 +185,10 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{payers: []pkg.Payer{{CHILDFIO: "Jane"}}},
 			orgParser:   &mockOrgParser{org: &pkg.Organization{Name: "Org"}},
 		}
-		_, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
 		require.Error(t, err)
 		require.True(t, errs.IsSystemError(err))
+		require.Equal(t, sentCount, 0)
 	})
 
 	t.Run("mail fail", func(t *testing.T) {
@@ -187,8 +200,9 @@ func TestProcessPayersFile(t *testing.T) {
 			payerParser: &mockPayerParser{payers: []pkg.Payer{{CHILDFIO: "Jane"}}},
 			orgParser:   &mockOrgParser{org: &pkg.Organization{Name: "Org"}},
 		}
-		_, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
+		_, sentCount, err := m.ProcessPayersFile(ctx, "f.xlsx", []byte("x"))
 		require.Error(t, err)
 		require.True(t, errs.IsSystemError(err))
+		require.Equal(t, sentCount, 0)
 	})
 }

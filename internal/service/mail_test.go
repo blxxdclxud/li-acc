@@ -73,8 +73,9 @@ func TestSendMails_AllSuccess(t *testing.T) {
 	s := &mailService{sender: mock}
 
 	mail := newTestMail("ok@example.com")
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	require.NoError(t, err)
+	require.Equal(t, sentCount, 1)
 }
 
 func TestSendMails_SomeFailures(t *testing.T) {
@@ -87,8 +88,9 @@ func TestSendMails_SomeFailures(t *testing.T) {
 	s := &mailService{sender: mock}
 	mail := newTestMail("ok@example.com", "fail@example.com")
 
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	require.Error(t, err)
+	require.Equal(t, sentCount, 1)
 
 	var sendErr *EmailSendingError
 	require.ErrorAs(t, err, &sendErr)
@@ -106,9 +108,10 @@ func TestSendMails_ContextCanceled(t *testing.T) {
 
 	mail := newTestMail("a@example.com", "b@example.com")
 
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "operation canceled")
+	require.Equal(t, sentCount, 0)
 }
 
 func TestSendMails_NoRecipients(t *testing.T) {
@@ -119,9 +122,10 @@ func TestSendMails_NoRecipients(t *testing.T) {
 	mail := newTestMail() // empty "To"
 	mail.To = nil
 
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no recipients")
+	require.Equal(t, sentCount, 0)
 }
 
 func TestSendMails_AttachmentMissing(t *testing.T) {
@@ -135,9 +139,10 @@ func TestSendMails_AttachmentMissing(t *testing.T) {
 	// Remove attachment to simulate GetAttachmentPath error
 	mail.AttachmentPaths = nil
 
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	// fatal error, since attachment is the most important in the mail
 	require.Error(t, err)
+	require.Equal(t, sentCount, 0)
 }
 
 func TestGetSenderEmail(t *testing.T) {
@@ -160,8 +165,9 @@ func TestSendMails_MultipleFailuresAggregated(t *testing.T) {
 	s := &mailService{sender: mock}
 	mail := newTestMail("a@example.com", "b@example.com")
 
-	err := s.SendMails(ctx, mail)
+	sentCount, err := s.SendMails(ctx, mail)
 	require.Error(t, err)
+	require.Equal(t, sentCount, 0)
 
 	var sendErr *EmailSendingError
 	require.ErrorAs(t, err, &sendErr)

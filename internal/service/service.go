@@ -120,14 +120,15 @@ func NewManager(dsn string, converterConfig string, smtp model.SMTP) (*Manager, 
 // ProcessPayersFile handles the uploaded xls/xlsx file bytes: stores the file, parses payers and settings,
 // generates receipts PDF files, sends emails with receipts and returns mapping email->pdfpath.
 // It performs validation, logs every stage and preserves error kinds from lower-level packages.
-func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, error) {
+// Return a non-nil CompositeError containing one or both EmailSendingError and EmailMappingError, or regular error.
+func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, int, error) {
 	start := time.Now()
 	logger.Info("ProcessPayersFile started", zap.String("filename", filename))
 
 	// validate settings exist and are OK
 	if err := m.validateBeforeProcessFile(ctx); err != nil {
 		logger.Warn("validation before processing failed", zap.Error(err))
-		return nil, errs.Wrap(errs.System, "validation before processing failed", err)
+		return nil, 0, errs.Wrap(errs.System, "validation before processing failed", err)
 	}
 
 	settings := m.Settings.GetCache()
@@ -136,7 +137,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	filePath, err := m.storage.Store(filename, m.dirs.PayersXlsDir, data)
 	if err != nil {
 		logger.Error("failed to store uploaded file", zap.String("path", filePath), zap.Error(err))
-		return nil, errs.Wrap(errs.System, "failed to store uploaded file "+filePath, err)
+		return nil, 0, errs.Wrap(errs.System, "failed to store uploaded file "+filePath, err)
 	}
 	logger.Info("stored uploaded file", zap.String("path", filePath))
 
@@ -145,7 +146,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	if err != nil {
 		logger.Error("failed to parse payers from xls", zap.String("path", filePath), zap.Error(err))
 		// preserve original error kind if present, that is already errs.System or errs.User
-		return nil, err
+		return nil, 0, err
 	}
 
 	// parse organization settings from the same uploaded file (or separate)
@@ -153,14 +154,14 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	if err != nil {
 		logger.Error("failed to parse settings from xls", zap.String("path", filePath), zap.Error(err))
 		// preserve original error kind if present, that is already errs.System or errs.User
-		return nil, err
+		return nil, 0, err
 	}
 
 	// record file in history
 	if err := m.History.AddRecord(ctx, model.File{FileName: filename, FileData: data}); err != nil {
 		logger.Error("failed to add history record", zap.Error(err))
 		// Wrap system error and return
-		return nil, errs.Wrap(errs.System, "history.AddRecord: %w", err)
+		return nil, 0, errs.Wrap(errs.System, "history.AddRecord: %w", err)
 	}
 
 	// formPersonalReceipts may return EmailMappingError or system error
@@ -173,7 +174,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 			errorsCollected = append(errorsCollected, missedEmailsErr)
 		} else {
 			logger.Error("failed to form personal receipts", zap.Error(err))
-			return nil, errs.Wrap(errs.System, "formPersonalReceipts: ", err)
+			return nil, 0, errs.Wrap(errs.System, "formPersonalReceipts: ", err)
 		}
 	}
 
@@ -192,7 +193,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	}
 
 	// SendMails may return EmailSendingError or system error
-	err = m.Mail.SendMails(ctx, mails)
+	sentCount, err := m.Mail.SendMails(ctx, mails)
 	var failedMailsErr *EmailSendingError
 
 	if err != nil {
@@ -200,23 +201,24 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 			errorsCollected = append(errorsCollected, failedMailsErr)
 		} else {
 			logger.Error("failed to send some emails", zap.Error(err))
-			return nil, errs.Wrap(errs.System, "MailService.SendMails()", err)
+			return nil, 0, errs.Wrap(errs.System, "MailService.SendMails()", err)
 		}
 	}
 
 	if len(errorsCollected) > 0 {
 		// Return composite error containing all partial errors
-		return receiptsMap, &CompositeError{Errors: errorsCollected}
+		return receiptsMap, sentCount, &CompositeError{Errors: errorsCollected}
 	}
 
 	// No errors found, full success
 	logger.Info("ProcessPayersFile completed",
 		zap.String("filename", filename),
 		zap.Int("payers_count", len(payers)),
+		zap.Int("mails_sent", sentCount),
 		zap.Duration("elapsed", time.Since(start)),
 	)
 
-	return receiptsMap, nil
+	return receiptsMap, sentCount, nil
 
 }
 
