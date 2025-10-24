@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -19,26 +18,19 @@ import (
 )
 
 // helper to create multipart file upload request
-func newMultipartRequest(t *testing.T, fieldName, filename, content string) (*http.Request, error) {
+func newMultipartRequest(t *testing.T) *http.Request {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 
-	part, err := writer.CreateFormFile(fieldName, filename)
-	if err != nil {
-		return nil, err
-	}
+	part, err := writer.CreateFormFile("file", "test.xlsx")
+	assert.NoError(t, err)
+	_, err = part.Write([]byte("dummy content"))
+	assert.NoError(t, err)
+	writer.Close()
 
-	if _, err := strings.NewReader(content).WriteTo(part); err != nil {
-		return nil, err
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/settings/upload-emails", body)
+	req := httptest.NewRequest(http.MethodPost, "/", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	return req, nil
+	return req
 }
 
 func TestUploadEmailsFile_Success(t *testing.T) {
@@ -51,8 +43,7 @@ func TestUploadEmailsFile_Success(t *testing.T) {
 	h := handler.NewSettingsHandler(mockSvc)
 
 	// Prepare multipart request with dummy Excel file content
-	req, err := newMultipartRequest(t, "file", "test.xlsx", "dummy Excel content")
-	assert.NoError(t, err)
+	req := newMultipartRequest(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -64,7 +55,7 @@ func TestUploadEmailsFile_Success(t *testing.T) {
 	// Assert success response
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]string
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "file processed successfully", resp["message"])
 
@@ -80,8 +71,7 @@ func TestUploadEmailsFile_Error(t *testing.T) {
 
 	h := handler.NewSettingsHandler(mockSvc)
 
-	req, err := newMultipartRequest(t, "file", "test.xlsx", "dummy Excel content")
-	assert.NoError(t, err)
+	req := newMultipartRequest(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
