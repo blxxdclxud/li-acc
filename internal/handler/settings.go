@@ -35,7 +35,7 @@ func NewSettingsHandler(s service.SettingsService) *SettingsHandler {
 // @Failure      400  {object}  map[string]string        "Bad request (invalid file, missing, or too large)"
 // @Failure      500  {object}  map[string]string        "Internal server error"
 //
-// @Router       /settings [post]
+// @Router       /settings/upload-emails [post]
 func (h *SettingsHandler) UploadEmailsFile(c *gin.Context) {
 	filename, fileData := getExcelFileFromMultipart(c)
 	if filename == "" || fileData == nil {

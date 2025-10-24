@@ -35,7 +35,7 @@ func NewMainHandler(s service.ManagerIface) *MainHandler {
 // @Failure      400  {object}  map[string]string        "Bad request errors (file missing, invalid file type, too large)"
 // @Failure      500  {object}  map[string]string        "Internal server errors"
 //
-// @Router       / [post]
+// @Router       /upload-payers [post]
 func (h *MainHandler) UploadPayersFile(c *gin.Context) {
 	filename, fileData := getExcelFileFromMultipart(c)
 	if filename == "" || fileData == nil {

@@ -56,6 +56,13 @@ func (defaultOrgParser) ParseSettings(path string) (*pkg.Organization, error) {
 	return xls.ParseSettings(path)
 }
 
+type ManagerIface interface {
+	ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, int, error)
+	HistoryService() HistoryService
+	SettingsService() SettingsService
+	MailService() MailService
+}
+
 // Manager is the orchestrator that coordinates the domain services (history/settings/mail/...)
 type Manager struct {
 	History  HistoryService
@@ -78,6 +85,18 @@ type Manager struct {
 		SentReceiptsDir    string
 		QrCodesDir         string
 	}
+}
+
+func (m *Manager) MailService() MailService {
+	return m.Mail
+}
+
+func (m *Manager) SettingsService() SettingsService {
+	return m.Settings
+}
+
+func (m *Manager) HistoryService() HistoryService {
+	return m.History
 }
 
 // NewManager constructor
