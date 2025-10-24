@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"io"
 	"li-acc/internal/service"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,51 +31,18 @@ func NewSettingsHandler(s service.SettingsService) *SettingsHandler {
 //
 // @Param        file formData file true "Excel file to upload. Allowed extensions: .xls, .xlsx, .xlsm"
 //
-// @Success      200  {object}  FileUploadResponseSuccess "File processed successfully"
+// @Success      200  {object}  EmailsFileUploadResponseSuccess "File processed successfully"
 // @Failure      400  {object}  map[string]string        "Bad request (invalid file, missing, or too large)"
 // @Failure      500  {object}  map[string]string        "Internal server error"
 //
 // @Router       /settings [post]
 func (h *SettingsHandler) UploadEmailsFile(c *gin.Context) {
-	// Parse multipart form with a reasonable max size (e.g., 10MB)
-	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
-		// handle error, respond bad request
-		c.JSON(http.StatusBadRequest, gin.H{"error": "слишком большой файл"})
-		return
+	filename, fileData := getExcelFileFromMultipart(c)
+	if filename == "" || fileData == nil {
+		return // error response already sent inside the function
 	}
-
-	// Get file header
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
-		return
-	}
-
-	// Validate file extension
-	if !(strings.HasSuffix(fileHeader.Filename, ".xls") ||
-		strings.HasSuffix(fileHeader.Filename, ".xlsx") ||
-		strings.HasSuffix(fileHeader.Filename, ".xlsm")) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "можно загрузить только файлы Excel (.xls, .xlsx, .xlsm)"})
-		return
-	}
-
-	// Open uploaded file
-	file, err := fileHeader.Open()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read uploaded file"})
-		return
-	}
-	defer file.Close()
-
-	// Read entire file content into memory
-	fileData, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file content"})
-		return
-	}
-
 	// Call service ProcessEmailsFile with context, filename, and file data
-	err = h.service.ProcessEmailsFile(c.Request.Context(), fileHeader.Filename, fileData)
+	err := h.service.ProcessEmailsFile(c.Request.Context(), filename, fileData)
 	if err != nil {
 		// Attach error for centralized middleware or localize it here
 		c.Error(err)
@@ -85,5 +50,5 @@ func (h *SettingsHandler) UploadEmailsFile(c *gin.Context) {
 	}
 
 	// Success response
-	c.JSON(http.StatusOK, FileUploadResponseSuccess{Message: "file processed successfully"})
+	c.JSON(http.StatusOK, EmailsFileUploadResponseSuccess{Message: "file processed successfully"})
 }

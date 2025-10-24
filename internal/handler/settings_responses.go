@@ -1,5 +1,5 @@
 package handler
 
-type FileUploadResponseSuccess struct {
+type EmailsFileUploadResponseSuccess struct {
 	Message string `json:"message"`
 }
