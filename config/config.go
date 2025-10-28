@@ -17,6 +17,11 @@ type Config struct {
 		Port int    `env:"SERVER_PORT,notEmpty"`
 	}
 
+	Metrics struct {
+		Host string `env:"METRICS_HOST,notEmpty"`
+		Port string `env:"METRICS_PORT,notEmpty"`
+	}
+
 	DB struct {
 		Host     string `env:"POSTGRES_HOST,notEmpty"`
 		Port     int    `env:"POSTGRES_PORT,notEmpty"`

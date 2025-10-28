@@ -59,7 +59,7 @@ func Warn(msg string, fields ...zap.Field) {
 	zap.L().Warn(msg, fields...)
 }
 
-// Fatal logs a warning message
+// Fatal logs a fatal message and exits program running
 func Fatal(msg string, fields ...zap.Field) {
 	zap.L().Fatal(msg, fields...)
 }
