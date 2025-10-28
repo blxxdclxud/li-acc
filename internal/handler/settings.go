@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"li-acc/internal/metrics"
 	"li-acc/internal/service"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -42,12 +44,26 @@ func (h *SettingsHandler) UploadEmailsFile(c *gin.Context) {
 		return // error response already sent inside the function
 	}
 	// Call service ProcessEmailsFile with context, filename, and file data
+	start := time.Now()
 	err := h.service.ProcessEmailsFile(c.Request.Context(), filename, fileData)
+
+	// update file processing latency metric
+	duration := time.Since(start).Seconds()
 	if err != nil {
+		metrics.EmailsFileLatency.WithLabelValues("failure").Observe(duration)
+	} else {
+		metrics.EmailsFileLatency.WithLabelValues("success").Observe(duration)
+	}
+
+	if err != nil {
+		metrics.FileProcessedTotal.WithLabelValues("failure", "", "emails").Inc()
+
 		// Attach error for centralized middleware or localize it here
 		c.Error(err)
 		return
 	}
+
+	metrics.FileProcessedTotal.WithLabelValues("success", "", "emails").Inc()
 
 	// Success response
 	c.JSON(http.StatusOK, EmailsFileUploadResponseSuccess{Message: "file processed successfully"})

@@ -2,8 +2,10 @@ package handler
 
 import (
 	"errors"
+	"li-acc/internal/metrics"
 	"li-acc/internal/service"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,25 +45,41 @@ func (h *MainHandler) UploadPayersFile(c *gin.Context) {
 	}
 
 	// Call service ProcessPayersFile with context, filename, and file data
+	start := time.Now()
 	_, sentCount, err := h.service.ProcessPayersFile(c.Request.Context(), filename, fileData)
+
+	// update file processing latency metric
+	duration := time.Since(start).Seconds()
+	if err != nil {
+		metrics.PayersFileLatency.WithLabelValues("failure").Observe(duration)
+	} else {
+		metrics.PayersFileLatency.WithLabelValues("success").Observe(duration)
+	}
+
 	response := PayersFileUploadResponse{
 		Message:    "file processed successfully",
 		SentAmount: sentCount,
 	}
 
 	if err != nil {
+		var errorStage string
+
 		var compositeErr *service.CompositeError
 		if errors.As(err, &compositeErr) {
 			response.PartialSuccess = true
+
+			// For partial failures, error_stage is "send_mails" or "email_mapping"
 			for _, e := range compositeErr.Errors {
 				switch typedErr := e.(type) {
 				case *service.EmailSendingError:
+					errorStage = "send_mails"
 					var failed []string
 					for email := range typedErr.MapReceiverCause {
 						failed = append(failed, email)
 					}
 					response.FailedEmails = failed
 				case *service.EmailMappingError:
+					errorStage = "email_mapping"
 					var missed []string
 					for email := range typedErr.MapPayerReceipt {
 						missed = append(missed, email)
@@ -69,11 +87,16 @@ func (h *MainHandler) UploadPayersFile(c *gin.Context) {
 					response.MissingPayers = missed
 				}
 			}
+
+			metrics.FileProcessedTotal.WithLabelValues("failure", errorStage, "payers").Inc()
 		} else {
+			metrics.FileProcessedTotal.WithLabelValues("failure", "not-partial", "payers").Inc()
 			// Handle a full failure (system/user error that is not partial)
 			c.Error(err)
 			return
 		}
 	}
+	metrics.FileProcessedTotal.WithLabelValues("success", "", "payers").Inc()
+
 	c.JSON(http.StatusOK, response)
 }

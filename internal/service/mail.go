@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"li-acc/internal/metrics"
 	"li-acc/internal/model"
 	"li-acc/pkg/logger"
 	"li-acc/pkg/sender"
@@ -40,6 +41,27 @@ func NewMailService(smtp model.SMTP) MailService {
 func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, error) {
 	start := time.Now()
 	maxParallel := defaultMaxParallel // limit of simultaneous SMTP sends
+
+	// error type string for metrics
+	var errorType string
+	var totalSent int // total amount of sent emails
+
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		var status string
+		if errorType == "" {
+			status = "success"
+		} else if totalSent == 0 {
+			status = "failure"
+		} else {
+			status = "partial"
+		}
+
+		metrics.SendMailsDuration.WithLabelValues(status).Observe(duration)
+		metrics.SendMailsTotal.WithLabelValues(status, errorType).Inc()
+		metrics.MailsSentCount.WithLabelValues(status).Observe(float64(totalSent))
+	}()
 
 	logger.Info("SendMails started",
 		zap.Int("recipients_total", len(mail.To)),
@@ -117,7 +139,6 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 	// Collect results
 	failedMails := make(map[string]string)
 	failedAttachments := make(map[string]string)
-	totalSent := 0
 
 	for status := range statusChan {
 		fmt.Println(status)
@@ -156,8 +177,11 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 	)
 
 	if len(failedMails) > 0 {
+		metrics.MailsFailedCount.WithLabelValues("partial").Observe(float64(len(failedMails)))
 		return totalSent, &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
 	}
+
+	metrics.MailsFailedCount.WithLabelValues("success").Observe(0)
 
 	return totalSent, nil
 }

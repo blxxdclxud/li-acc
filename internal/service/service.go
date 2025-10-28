@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"li-acc/internal/errs"
+	"li-acc/internal/metrics"
 	"li-acc/internal/model"
 	"li-acc/internal/repository"
 	"li-acc/pkg/converter"
@@ -246,28 +247,51 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 // If there are missed emails for some payers, they are not included in the result map, but custom EmailMappingError returned also.
 func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, org pkg.Organization) (map[string]string, error) {
 	start := time.Now()
+
+	receiptsMap := make(map[string]string) // map to be returned, `payer email` -> `personal pdf receipt path`
+
+	// error type string for metrics
+	var errorType string
+
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		var status string
+		if errorType == "" {
+			status = "success"
+		} else {
+			status = "failed"
+		}
+
+		metrics.GenerateReceiptsDuration.WithLabelValues(status).Observe(duration)
+		metrics.GenerateReceiptsTotal.WithLabelValues(status, errorType).Inc()
+		metrics.ReceiptsGeneratedCount.WithLabelValues(status).Observe(float64(len(receiptsMap)))
+	}()
+
 	logger.Info("formPersonalReceipts started", zap.Int("payers_count", len(payers)))
 
 	templatePath, err := m.prepareReceiptTemplate(org)
 	if err != nil {
+		errorType = "prepare_pdf_template"
 		logger.Error("prepareReceiptTemplate failed", zap.Error(err))
 		return nil, err // system error
 	}
 
 	receiptsDir, err := createNowDir(m.dirs.SentReceiptsDir)
 	if err != nil {
+		errorType = "create_dir"
 		logger.Error("failed to create receipts dir", zap.Error(err))
 		return nil, err // system error
 	}
 
 	qrDir, err := createNowDir(m.dirs.QrCodesDir)
 	if err != nil {
+		errorType = "create_dir"
 		logger.Error("failed to create qr dir", zap.Error(err))
 		return nil, err // system error
 	}
 
 	qrCreator := qr.NewQrPattern(org)
-	receiptsMap := make(map[string]string)
 
 	missedPayers := make(map[string]string)
 
@@ -276,6 +300,7 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		select {
 		case <-ctx.Done():
 			logger.Warn("formPersonalReceipts aborted: context canceled")
+			errorType = "context_closed"
 			return nil, ctx.Err()
 		default:
 		}
@@ -289,6 +314,7 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		// create canvas per-payer (pdf object wraps the template)
 		canvas, err := pdf.NewCanvasFromTemplate(templatePath, m.pdfFontPath, false) // debugMode true if logger present
 		if err != nil {
+			errorType = "create_pdf_canvas"
 			logger.Error("failed to create canvas from template", zap.Error(err))
 			return nil, err
 		}
@@ -297,23 +323,27 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		qrFile := filepath.Join(qrDir, payerFileName+".jpg")
 		qrString := qrCreator.GetPayersQrDataString(payer)
 		if err := qrCreator.GenerateQRCode(qrString, qrFile); err != nil {
+			errorType = "generate_qr_code"
 			logger.Error("failed to generate qr", zap.String("qrFile", qrFile), zap.Error(err))
 			return nil, err
 		}
 
 		qrImgBytes, err := os.ReadFile(qrFile)
 		if err != nil {
+			errorType = "read_qr_code"
 			logger.Error("failed to read qr image", zap.String("qrFile", qrFile), zap.Error(err))
 			return nil, err
 		}
 
 		if err := canvas.Fill(payer, qrImgBytes); err != nil {
+			errorType = "fill_payer_info"
 			logger.Error("canvas.Fill error", zap.Error(err))
 			return nil, err
 		}
 
 		pdfFile := filepath.Join(receiptsDir, payerFileName+".pdf")
 		if err := canvas.Save(pdfFile); err != nil {
+			errorType = "save_pdf_receipt"
 			logger.Error("failed to save pdf", zap.String("pdf", pdfFile), zap.Error(err))
 			return nil, err
 		}
