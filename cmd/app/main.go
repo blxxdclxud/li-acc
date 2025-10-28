@@ -36,7 +36,7 @@ func main() {
 
 	// database connection string
 	db := cfg.DB
-	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable",
+	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable",
 		db.User, db.Password, db.Host, db.Port, db.DbName)
 
 	// create service manager
