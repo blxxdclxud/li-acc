@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"li-acc/internal/model"
@@ -26,10 +27,26 @@ func (r *SettingsRepository) GetSettings(ctx context.Context) (model.Settings, e
 
 	var setting model.Settings
 
+	// After (handles NULL)
+	var emailsJSON sql.NullString
+	var senderEmail sql.NullString
+
 	// Fill all fields of the settings model with fetched data
-	err := row.Scan(&setting.EmailsJSON, &setting.SenderEmail)
+	err := row.Scan(&emailsJSON, &senderEmail)
 	if err != nil {
 		return model.Settings{}, fmt.Errorf("error during scanning fetched setting: %w", err)
+	}
+
+	if emailsJSON.Valid {
+		setting.EmailsJSON = emailsJSON.String
+	} else {
+		setting.EmailsJSON = "" // or handle missing sender email
+	}
+
+	if senderEmail.Valid {
+		setting.SenderEmail = senderEmail.String
+	} else {
+		setting.SenderEmail = "" // or handle missing sender email
 	}
 
 	if err := setting.AfterLoad(); err != nil {

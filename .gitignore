@@ -29,3 +29,6 @@ pkg/**/.env.local
 pkg/**/out/
 
 .coverage.out
+
+tests/e2e/testdata/emails/manual
+tests/e2e/testdata/payers/manual

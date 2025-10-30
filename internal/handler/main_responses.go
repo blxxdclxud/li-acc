@@ -1,9 +1,5 @@
 package handler
 
-type PayersFileUploadResponseSuccess struct {
-	Message string `json:"message"`
-}
-
 type PayersFileUploadResponse struct {
 	Message        string   `json:"message"`                  // summary message for user
 	SentAmount     int      `json:"sent_amount,omitempty"`    // number of sent emails

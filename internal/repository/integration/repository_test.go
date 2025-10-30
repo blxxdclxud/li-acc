@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"database/sql"
 	"li-acc/internal/repository"
 	"li-acc/internal/repository/db"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var (
@@ -38,11 +41,15 @@ func ensureDBReady(t *testing.T) {
 		migAbs, err := filepath.Abs(MigrationsDir)
 		require.NoError(t, err)
 
-		applied, err := db.ApplyMigrations(testRepo.DB, migAbs)
+		conn, err := sql.Open("pgx", testDsn)
+		require.NoError(t, err)
+
+		applied, err := db.ApplyMigrations(conn, migAbs)
 		require.NoError(t, err)
 		if applied {
 			t.Log("migrations applied successfully")
 		}
+		conn.Close()
 	})
 }
 
