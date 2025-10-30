@@ -88,6 +88,14 @@ type Manager struct {
 	}
 }
 
+func (m *Manager) SetPdfFontPath(path string) {
+	m.pdfFontPath = path
+}
+
+func (m *Manager) Close() {
+	m.repo.CloseDB()
+}
+
 func (m *Manager) MailService() MailService {
 	return m.Mail
 }
@@ -102,6 +110,11 @@ func (m *Manager) HistoryService() HistoryService {
 
 // NewManager constructor
 func NewManager(dsn string, converterConfig string, smtp model.SMTP) (*Manager, error) {
+	// Ensure directories exist
+	if err := model.EnsureTmpDirectories(); err != nil {
+		return nil, fmt.Errorf("failed to create tmp directories: %w", err)
+	}
+
 	repo, err := repository.ConnectDB(dsn)
 	if err != nil {
 		return nil, err
@@ -133,6 +146,13 @@ func NewManager(dsn string, converterConfig string, smtp model.SMTP) (*Manager, 
 	m.storage = defaultFileStorage{}
 	m.payerParser = defaultPayerParser{}
 	m.orgParser = defaultOrgParser{}
+
+	// since now SenderEmail passes only in `smtp` in this constructor, it never added to DB
+	// so add it now
+	err = m.Settings.SetSenderEmail(context.Background(), smtp.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set sender email in manager's constructor: %w", err)
+	}
 
 	return m, nil
 }
@@ -198,10 +218,13 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 		}
 	}
 
+	// exclude payers that mentioned in emails map, but not present in actual payers list
 	emailsMap := settings.Emails
 	var emailsList []string
-	for _, e := range emailsMap {
-		emailsList = append(emailsList, e)
+	for _, p := range payers {
+		if email, ok := emailsMap[strings.ToLower(p.CHILDFIO)]; ok {
+			emailsList = append(emailsList, email)
+		}
 	}
 
 	mails := model.Mail{
@@ -381,11 +404,14 @@ func (m *Manager) prepareReceiptTemplate(org pkg.Organization) (string, error) {
 	xlsCleanFilename := strings.TrimSuffix(xlsFilename, filepath.Ext(xlsFilename))
 	pdfPath := filepath.Join(m.dirs.ReceiptPatternsDir, xlsCleanFilename+".pdf")
 
+	convStart := time.Now()
 	logger.Info("converting xls to pdf", zap.String("xls", xlsPath), zap.String("pdf", pdfPath))
 	if err := converter.ExcelToPdf(xlsPath, pdfPath, m.converterConfigKey); err != nil {
-		logger.Error("ExcelToPdf failed", zap.Error(err))
+		logger.Error("ExcelToPdf failed", zap.Error(err), zap.Duration("elapsed", time.Since(convStart)))
 		return "", errs.Wrap(errs.System, "ExcelToPdf failed", err)
 	}
+
+	logger.Info("conversion completed", zap.Duration("elapsed", time.Since(convStart)))
 
 	logger.Info("prepareReceiptTemplate completed", zap.Duration("elapsed", time.Since(start)))
 	return pdfPath, nil
@@ -395,6 +421,7 @@ func (m *Manager) prepareReceiptTemplate(org pkg.Organization) (string, error) {
 func (m *Manager) validateBeforeProcessFile(ctx context.Context) error {
 	// if GetSettings succeeded, settings are fetched into cache of settings service
 	settings, err := m.Settings.GetSettings(ctx)
+
 	if err != nil {
 		logger.Warn("Settings.GetSettings failed", zap.Error(err))
 		return errs.Wrap(errs.System, "Settings.GetSettings failed", err)

@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"li-acc/internal/model"
 	"os"
 	"path/filepath"
@@ -99,7 +98,7 @@ func TestIntegration_ProcessPayersFile_FileOrchestration(t *testing.T) {
 	startTime := time.Now()
 	receiptsMap, sentCount, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
 	elapsed := time.Since(startTime)
-	fmt.Println(receiptsMap)
+
 	require.Equal(t, sentCount, mockMail.sentCount)
 
 	// === ASSERT: Verify orchestration worked correctly ===

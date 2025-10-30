@@ -28,7 +28,7 @@ type mailService struct {
 
 func NewMailService(smtp model.SMTP) MailService {
 	return &mailService{
-		sender: sender.NewSender(smtp.Host, smtp.Port, smtp.Email, smtp.Password, true),
+		sender: sender.NewSender(smtp.Host, smtp.Port, smtp.Email, smtp.Password, smtp.UseTLS),
 	}
 }
 
@@ -141,7 +141,6 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 	failedAttachments := make(map[string]string)
 
 	for status := range statusChan {
-		fmt.Println(status)
 		if status.Status == sender.Error {
 			logger.Error("SendMails failedMails to send email",
 				zap.Any("recipients", status.Msg.GetHeader("To")),
@@ -172,7 +171,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 	logger.Info("SendMails completed",
 		zap.Int("recipients_total", len(mail.To)),
 		zap.Int("failed_count", len(failedMails)),
-		zap.Int("sent_count", len(failedMails)),
+		zap.Int("sent_count", totalSent),
 		zap.Duration("elapsed", duration),
 	)
 
