@@ -2,6 +2,7 @@ package sender
 
 import (
 	"fmt"
+	"sync"
 
 	"gopkg.in/gomail.v2"
 )
@@ -19,7 +20,9 @@ type Sender struct {
 	SmtpPort       int
 	SenderEmail    string
 	SenderPassword string
-	UseSSl         bool
+	UseSSL         bool
+	dialer         *gomail.Dialer
+	dialerOnce     sync.Once
 }
 
 // NewSender Initializes new Sender object with passed values.
@@ -29,8 +32,17 @@ func NewSender(smtpHost string, smtpPort int, senderEmail, senderPassword string
 		SmtpPort:       smtpPort,
 		SenderEmail:    senderEmail,
 		SenderPassword: senderPassword,
-		UseSSl:         useSSL,
+		UseSSL:         useSSL,
 	}
+}
+
+// getDialer returns a reusable dialer (initialized once)
+func (s *Sender) getDialer() *gomail.Dialer {
+	s.dialerOnce.Do(func() {
+		s.dialer = gomail.NewDialer(s.SmtpHost, s.SmtpPort, s.SenderEmail, s.SenderPassword)
+		s.dialer.SSL = s.UseSSL
+	})
+	return s.dialer
 }
 
 // SendEmail method sends the message [Msg] using SMTP. Expecting execution in parallel goroutine,
@@ -46,10 +58,9 @@ func (s *Sender) SendEmail(msg *gomail.Message, status chan EmailStatus, storeFo
 		msg.SetHeader("To", append(existingRecipients, s.SenderEmail)...)
 	}
 
-	// initialize SmtpPort Dialer with SSL connection
-	dialer := gomail.NewDialer(s.SmtpHost, s.SmtpPort, s.SenderEmail, s.SenderPassword)
-	dialer.SSL = s.UseSSl
+	dialer := s.getDialer()
 
+	// Use DialAndSend which reuses connections internally
 	err := dialer.DialAndSend(msg)
 	if err != nil {
 		emailStatus.Status = Error

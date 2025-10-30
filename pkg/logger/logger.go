@@ -17,6 +17,8 @@ func Init(env string) error {
 		cfg = zap.NewProductionConfig()
 	} else {
 		cfg = zap.NewDevelopmentConfig()
+		// Disable stack traces in development (they're noisy in tests)
+		cfg.DisableStacktrace = true
 	}
 
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
