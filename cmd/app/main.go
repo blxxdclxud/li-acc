@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"li-acc/config"
@@ -13,9 +14,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
+
+	migrator "li-acc/internal/repository/db"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -26,7 +28,7 @@ const ENV = "production"
 
 func main() {
 	// load configs from .env file
-	cfg := config.LoadConfig()
+	cfg := config.LoadConfig(os.Getenv("ENV"))
 
 	if err := logger.Init(ENV); err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
@@ -36,20 +38,48 @@ func main() {
 
 	// database connection string
 	db := cfg.DB
-	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable",
+	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable",
 		db.User, db.Password, db.Host, db.Port, db.DbName)
 
+	// Use sql.DB for migrations
+	migrationDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		logger.Fatal("failed to open DB for migrations:", zap.Error(err))
+	}
+
+	applied, err := migrator.ApplyMigrations(migrationDB, model.MigrationsDir)
+	if err != nil {
+		migrationDB.Close()
+		logger.Fatal("failed to apply migrations:", zap.Error(err))
+	}
+	migrationDB.Close() // <-- Closes immediately, no blocking
+
+	if applied {
+		logger.Info("migrations applied successfully")
+	} else {
+		logger.Info("no new migrations applied")
+	}
+
 	// create service manager
-	serviceManager, err := service.NewManager(dsn, cfg.ConvertAPI.PublicKey, (model.SMTP)(cfg.SMTP))
+	smtp := model.SMTP{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Email:    cfg.SMTP.Email,
+		Password: cfg.SMTP.Password,
+		UseTLS:   true,
+	}
+	serviceManager, err := service.NewManager(dsn, cfg.ConvertAPI.PublicKey, smtp)
 	if err != nil {
 		logger.Fatal("failed to create service manager", zap.Error(err))
 	}
+
+	defer serviceManager.Close()
 
 	// ==== Setup Servers
 
 	// API server
 	apiRouter := handler.SetupRouter(serviceManager)
-	apiHost := cfg.Server.Host + ":" + strconv.Itoa(cfg.Server.Port)
+	apiHost := cfg.Server.Host + ":" + cfg.Server.Port
 	apiServer := &http.Server{
 		Addr:    apiHost,
 		Handler: apiRouter,

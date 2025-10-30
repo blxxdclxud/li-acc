@@ -24,11 +24,13 @@ go.work.sum
 # env file
 .env
 pkg/**/.env.local
+tests/**/.env.test
 
 # output files of integration tests
 pkg/**/out/
 
 .coverage.out
 
-tests/e2e/testdata/emails/manual
-tests/e2e/testdata/payers/manual
+tests/**/tmp
+
+tmp

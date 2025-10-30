@@ -8,13 +8,14 @@ import (
 	"sync"
 
 	"github.com/gabrielsoaressantos/env/v8"
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
 type Config struct {
 	Server struct {
 		Host string `env:"SERVER_HOST,notEmpty"`
-		Port int    `env:"SERVER_PORT,notEmpty"`
+		Port string `env:"SERVER_PORT,notEmpty"`
 	}
 
 	Metrics struct {
@@ -24,7 +25,7 @@ type Config struct {
 
 	DB struct {
 		Host     string `env:"POSTGRES_HOST,notEmpty"`
-		Port     int    `env:"POSTGRES_PORT,notEmpty"`
+		Port     string `env:"POSTGRES_PORT,notEmpty"`
 		User     string `env:"POSTGRES_USER,notEmpty"`
 		Password string `env:"POSTGRES_PASSWORD,notEmpty"`
 		DbName   string `env:"POSTGRES_DB,notEmpty"`
@@ -43,19 +44,34 @@ type Config struct {
 	}
 }
 
-const FilePath = "./.env"
+const ProdFilePath = "./.env"
+const TestFilePath = "./.env.test" // tests/e2e/.env.test
 
 var (
 	cfg  *Config
 	once sync.Once
 )
 
-func LoadConfig() *Config {
+// LoadConfig loads variables from .env file.
+// Passed `env` parameter = "test"|"prod"
+func LoadConfig(environ string) *Config {
 	once.Do(func() {
-		absFP, _ := filepath.Abs(FilePath)
-		_, err := os.ReadFile(FilePath)
+		var filePath string
+		if environ == "test" {
+			filePath = TestFilePath
+		} else {
+			filePath = ProdFilePath
+		}
+
+		absFP, _ := filepath.Abs(filePath)
+		_, err := os.ReadFile(filePath)
 		if err != nil {
 			logger.Fatal(fmt.Sprintf("error finding `%s` file", absFP), zap.Error(err))
+		}
+
+		err = godotenv.Load(filePath)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("error loading env file `%s`", absFP), zap.Error(err))
 		}
 
 		cfg = &Config{}
