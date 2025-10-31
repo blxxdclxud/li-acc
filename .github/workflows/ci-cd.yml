@@ -1,6 +1,10 @@
 name: CI/CD Pipeline
 
-on: [ push, pull_request ]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   lint:
@@ -72,6 +76,35 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
+
+      - name: Create .env.test file
+        run: |
+          cat << EOF > tests/e2e/.env.test
+          # App server
+          SERVER_HOST=127.0.0.1
+          SERVER_PORT=8000
+          
+          # Metrics server
+          METRICS_HOST=127.0.0.1
+          METRICS_PORT=8081
+          
+          # PostgreSQL
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_PORT=5432
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=accounting_test
+          
+          # compdf.com file converter API
+          CONVERT_API_PUBLIC_KEY=${{ secrets.CONVERT_API_PUBLIC_KEY }}
+          CONVERT_API_SECRET_KEY=${{ secrets.CONVERT_API_SECRET_KEY }}
+          
+          # Yandex Mail SMTP creds
+          SMTP_HOST=smtp.yandex.com
+          SMTP_PORT=465
+          SMTP_EMAIL=${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          EOF
 
       - name: Run e2e tests
         run: go test -v -tags=e2e ./tests/e2e/ -run "TestUploadEmailsFile"
