@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"li-acc/internal/metrics"
 	"li-acc/internal/model"
 	"li-acc/pkg/logger"
 	"li-acc/pkg/sender"
@@ -18,7 +19,7 @@ import (
 const defaultMaxParallel = 10
 
 type MailService interface {
-	SendMails(ctx context.Context, mail model.Mail) error
+	SendMails(ctx context.Context, mail model.Mail) (int, error)
 	GetSenderEmail() string
 }
 type mailService struct {
@@ -27,7 +28,7 @@ type mailService struct {
 
 func NewMailService(smtp model.SMTP) MailService {
 	return &mailService{
-		sender: sender.NewSender(smtp.Host, smtp.Port, smtp.Email, smtp.Password, true),
+		sender: sender.NewSender(smtp.Host, smtp.Port, smtp.Email, smtp.Password, smtp.UseTLS),
 	}
 }
 
@@ -36,10 +37,31 @@ func NewMailService(smtp model.SMTP) MailService {
 //
 // The method launches up to [maxParallel] concurrent senders to avoid overloading the SMTP server.
 // Each goroutine reports its result into a channel [sent]. When all emails are processed,
-// it collects all errors (if any) and returns a combined error message.
-func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
+// it collects all errors (if any) and returns amount of sent mails and a combined error message.
+func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, error) {
 	start := time.Now()
 	maxParallel := defaultMaxParallel // limit of simultaneous SMTP sends
+
+	// error type string for metrics
+	var errorType string
+	var totalSent int // total amount of sent emails
+
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		var status string
+		if errorType == "" {
+			status = "success"
+		} else if totalSent == 0 {
+			status = "failure"
+		} else {
+			status = "partial"
+		}
+
+		metrics.SendMailsDuration.WithLabelValues(status).Observe(duration)
+		metrics.SendMailsTotal.WithLabelValues(status, errorType).Inc()
+		metrics.MailsSentCount.WithLabelValues(status).Observe(float64(totalSent))
+	}()
 
 	logger.Info("SendMails started",
 		zap.Int("recipients_total", len(mail.To)),
@@ -50,7 +72,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	if len(mail.To) == 0 {
 		err := errors.New("no recipients provided")
 		logger.Warn("SendMails validation failedMails", zap.Error(err))
-		return fmt.Errorf("validation error: %w", err)
+		return 0, fmt.Errorf("validation error: %w", err)
 	}
 
 	// concurrency controls
@@ -62,7 +84,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	case <-ctx.Done():
 		err := ctx.Err()
 		logger.Warn("SendMails aborted - context canceled", zap.Error(err))
-		return fmt.Errorf("operation canceled: %w", err)
+		return 0, fmt.Errorf("operation canceled: %w", err)
 	default:
 	}
 
@@ -117,8 +139,8 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	// Collect results
 	failedMails := make(map[string]string)
 	failedAttachments := make(map[string]string)
+
 	for status := range statusChan {
-		fmt.Println(status)
 		if status.Status == sender.Error {
 			logger.Error("SendMails failedMails to send email",
 				zap.Any("recipients", status.Msg.GetHeader("To")),
@@ -140,6 +162,8 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 				}
 			}
 
+		} else {
+			totalSent++
 		}
 	}
 
@@ -147,14 +171,18 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) error {
 	logger.Info("SendMails completed",
 		zap.Int("recipients_total", len(mail.To)),
 		zap.Int("failed_count", len(failedMails)),
+		zap.Int("sent_count", totalSent),
 		zap.Duration("elapsed", duration),
 	)
 
 	if len(failedMails) > 0 {
-		return &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
+		metrics.MailsFailedCount.WithLabelValues("partial").Observe(float64(len(failedMails)))
+		return totalSent, &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
 	}
 
-	return nil
+	metrics.MailsFailedCount.WithLabelValues("success").Observe(0)
+
+	return totalSent, nil
 }
 
 func (m *mailService) GetSenderEmail() string {

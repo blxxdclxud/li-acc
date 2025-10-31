@@ -125,6 +125,9 @@ func (s *settingsService) GetSettings(ctx context.Context) (model.Settings, erro
 		return model.Settings{}, fmt.Errorf("failed to get settings: %w", err)
 	}
 
+	// Update cache after fetching
+	s.cache = settings
+
 	// Log success and duration
 	duration := time.Since(start)
 	logger.Info("GetSettings completed successfully",

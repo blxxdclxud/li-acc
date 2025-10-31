@@ -17,6 +17,8 @@ func Init(env string) error {
 		cfg = zap.NewProductionConfig()
 	} else {
 		cfg = zap.NewDevelopmentConfig()
+		// Disable stack traces in development (they're noisy in tests)
+		cfg.DisableStacktrace = true
 	}
 
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -59,7 +61,7 @@ func Warn(msg string, fields ...zap.Field) {
 	zap.L().Warn(msg, fields...)
 }
 
-// Fatal logs a warning message
+// Fatal logs a fatal message and exits program running
 func Fatal(msg string, fields ...zap.Field) {
 	zap.L().Fatal(msg, fields...)
 }

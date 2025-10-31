@@ -23,6 +23,7 @@ type SMTP struct {
 	Port     int
 	Email    string
 	Password string
+	UseTLS   bool
 }
 
 const (

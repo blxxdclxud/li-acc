@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"li-acc/internal/errs"
+	"li-acc/internal/metrics"
 	"li-acc/internal/model"
 	"li-acc/internal/repository"
 	"li-acc/pkg/converter"
@@ -56,6 +57,13 @@ func (defaultOrgParser) ParseSettings(path string) (*pkg.Organization, error) {
 	return xls.ParseSettings(path)
 }
 
+type ManagerIface interface {
+	ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, int, error)
+	HistoryService() HistoryService
+	SettingsService() SettingsService
+	MailService() MailService
+}
+
 // Manager is the orchestrator that coordinates the domain services (history/settings/mail/...)
 type Manager struct {
 	History  HistoryService
@@ -80,8 +88,33 @@ type Manager struct {
 	}
 }
 
+func (m *Manager) SetPdfFontPath(path string) {
+	m.pdfFontPath = path
+}
+
+func (m *Manager) Close() {
+	m.repo.CloseDB()
+}
+
+func (m *Manager) MailService() MailService {
+	return m.Mail
+}
+
+func (m *Manager) SettingsService() SettingsService {
+	return m.Settings
+}
+
+func (m *Manager) HistoryService() HistoryService {
+	return m.History
+}
+
 // NewManager constructor
 func NewManager(dsn string, converterConfig string, smtp model.SMTP) (*Manager, error) {
+	// Ensure directories exist
+	if err := model.EnsureTmpDirectories(); err != nil {
+		return nil, fmt.Errorf("failed to create tmp directories: %w", err)
+	}
+
 	repo, err := repository.ConnectDB(dsn)
 	if err != nil {
 		return nil, err
@@ -114,20 +147,28 @@ func NewManager(dsn string, converterConfig string, smtp model.SMTP) (*Manager, 
 	m.payerParser = defaultPayerParser{}
 	m.orgParser = defaultOrgParser{}
 
+	// since now SenderEmail passes only in `smtp` in this constructor, it never added to DB
+	// so add it now
+	err = m.Settings.SetSenderEmail(context.Background(), smtp.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set sender email in manager's constructor: %w", err)
+	}
+
 	return m, nil
 }
 
 // ProcessPayersFile handles the uploaded xls/xlsx file bytes: stores the file, parses payers and settings,
 // generates receipts PDF files, sends emails with receipts and returns mapping email->pdfpath.
 // It performs validation, logs every stage and preserves error kinds from lower-level packages.
-func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, error) {
+// Return a non-nil CompositeError containing one or both EmailSendingError and EmailMappingError, or regular error.
+func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data []byte) (map[string]string, int, error) {
 	start := time.Now()
 	logger.Info("ProcessPayersFile started", zap.String("filename", filename))
 
 	// validate settings exist and are OK
 	if err := m.validateBeforeProcessFile(ctx); err != nil {
 		logger.Warn("validation before processing failed", zap.Error(err))
-		return nil, errs.Wrap(errs.System, "validation before processing failed", err)
+		return nil, 0, errs.Wrap(errs.System, "validation before processing failed", err)
 	}
 
 	settings := m.Settings.GetCache()
@@ -136,7 +177,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	filePath, err := m.storage.Store(filename, m.dirs.PayersXlsDir, data)
 	if err != nil {
 		logger.Error("failed to store uploaded file", zap.String("path", filePath), zap.Error(err))
-		return nil, errs.Wrap(errs.System, "failed to store uploaded file "+filePath, err)
+		return nil, 0, errs.Wrap(errs.System, "failed to store uploaded file "+filePath, err)
 	}
 	logger.Info("stored uploaded file", zap.String("path", filePath))
 
@@ -145,7 +186,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	if err != nil {
 		logger.Error("failed to parse payers from xls", zap.String("path", filePath), zap.Error(err))
 		// preserve original error kind if present, that is already errs.System or errs.User
-		return nil, err
+		return nil, 0, err
 	}
 
 	// parse organization settings from the same uploaded file (or separate)
@@ -153,14 +194,14 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	if err != nil {
 		logger.Error("failed to parse settings from xls", zap.String("path", filePath), zap.Error(err))
 		// preserve original error kind if present, that is already errs.System or errs.User
-		return nil, err
+		return nil, 0, err
 	}
 
 	// record file in history
 	if err := m.History.AddRecord(ctx, model.File{FileName: filename, FileData: data}); err != nil {
 		logger.Error("failed to add history record", zap.Error(err))
 		// Wrap system error and return
-		return nil, errs.Wrap(errs.System, "history.AddRecord: %w", err)
+		return nil, 0, errs.Wrap(errs.System, "history.AddRecord: %w", err)
 	}
 
 	// formPersonalReceipts may return EmailMappingError or system error
@@ -173,14 +214,17 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 			errorsCollected = append(errorsCollected, missedEmailsErr)
 		} else {
 			logger.Error("failed to form personal receipts", zap.Error(err))
-			return nil, errs.Wrap(errs.System, "formPersonalReceipts: ", err)
+			return nil, 0, errs.Wrap(errs.System, "formPersonalReceipts: ", err)
 		}
 	}
 
+	// exclude payers that mentioned in emails map, but not present in actual payers list
 	emailsMap := settings.Emails
 	var emailsList []string
-	for _, e := range emailsMap {
-		emailsList = append(emailsList, e)
+	for _, p := range payers {
+		if email, ok := emailsMap[strings.ToLower(p.CHILDFIO)]; ok {
+			emailsList = append(emailsList, email)
+		}
 	}
 
 	mails := model.Mail{
@@ -192,7 +236,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	}
 
 	// SendMails may return EmailSendingError or system error
-	err = m.Mail.SendMails(ctx, mails)
+	sentCount, err := m.Mail.SendMails(ctx, mails)
 	var failedMailsErr *EmailSendingError
 
 	if err != nil {
@@ -200,23 +244,24 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 			errorsCollected = append(errorsCollected, failedMailsErr)
 		} else {
 			logger.Error("failed to send some emails", zap.Error(err))
-			return nil, errs.Wrap(errs.System, "MailService.SendMails()", err)
+			return nil, 0, errs.Wrap(errs.System, "MailService.SendMails()", err)
 		}
 	}
 
 	if len(errorsCollected) > 0 {
 		// Return composite error containing all partial errors
-		return receiptsMap, &CompositeError{Errors: errorsCollected}
+		return receiptsMap, sentCount, &CompositeError{Errors: errorsCollected}
 	}
 
 	// No errors found, full success
 	logger.Info("ProcessPayersFile completed",
 		zap.String("filename", filename),
 		zap.Int("payers_count", len(payers)),
+		zap.Int("mails_sent", sentCount),
 		zap.Duration("elapsed", time.Since(start)),
 	)
 
-	return receiptsMap, nil
+	return receiptsMap, sentCount, nil
 
 }
 
@@ -225,28 +270,51 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 // If there are missed emails for some payers, they are not included in the result map, but custom EmailMappingError returned also.
 func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, org pkg.Organization) (map[string]string, error) {
 	start := time.Now()
+
+	receiptsMap := make(map[string]string) // map to be returned, `payer email` -> `personal pdf receipt path`
+
+	// error type string for metrics
+	var errorType string
+
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		var status string
+		if errorType == "" {
+			status = "success"
+		} else {
+			status = "failed"
+		}
+
+		metrics.GenerateReceiptsDuration.WithLabelValues(status).Observe(duration)
+		metrics.GenerateReceiptsTotal.WithLabelValues(status, errorType).Inc()
+		metrics.ReceiptsGeneratedCount.WithLabelValues(status).Observe(float64(len(receiptsMap)))
+	}()
+
 	logger.Info("formPersonalReceipts started", zap.Int("payers_count", len(payers)))
 
 	templatePath, err := m.prepareReceiptTemplate(org)
 	if err != nil {
+		errorType = "prepare_pdf_template"
 		logger.Error("prepareReceiptTemplate failed", zap.Error(err))
 		return nil, err // system error
 	}
 
 	receiptsDir, err := createNowDir(m.dirs.SentReceiptsDir)
 	if err != nil {
+		errorType = "create_dir"
 		logger.Error("failed to create receipts dir", zap.Error(err))
 		return nil, err // system error
 	}
 
 	qrDir, err := createNowDir(m.dirs.QrCodesDir)
 	if err != nil {
+		errorType = "create_dir"
 		logger.Error("failed to create qr dir", zap.Error(err))
 		return nil, err // system error
 	}
 
 	qrCreator := qr.NewQrPattern(org)
-	receiptsMap := make(map[string]string)
 
 	missedPayers := make(map[string]string)
 
@@ -255,6 +323,7 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		select {
 		case <-ctx.Done():
 			logger.Warn("formPersonalReceipts aborted: context canceled")
+			errorType = "context_closed"
 			return nil, ctx.Err()
 		default:
 		}
@@ -268,6 +337,7 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		// create canvas per-payer (pdf object wraps the template)
 		canvas, err := pdf.NewCanvasFromTemplate(templatePath, m.pdfFontPath, false) // debugMode true if logger present
 		if err != nil {
+			errorType = "create_pdf_canvas"
 			logger.Error("failed to create canvas from template", zap.Error(err))
 			return nil, err
 		}
@@ -276,23 +346,27 @@ func (m *Manager) formPersonalReceipts(ctx context.Context, payers []pkg.Payer, 
 		qrFile := filepath.Join(qrDir, payerFileName+".jpg")
 		qrString := qrCreator.GetPayersQrDataString(payer)
 		if err := qrCreator.GenerateQRCode(qrString, qrFile); err != nil {
+			errorType = "generate_qr_code"
 			logger.Error("failed to generate qr", zap.String("qrFile", qrFile), zap.Error(err))
 			return nil, err
 		}
 
 		qrImgBytes, err := os.ReadFile(qrFile)
 		if err != nil {
+			errorType = "read_qr_code"
 			logger.Error("failed to read qr image", zap.String("qrFile", qrFile), zap.Error(err))
 			return nil, err
 		}
 
 		if err := canvas.Fill(payer, qrImgBytes); err != nil {
+			errorType = "fill_payer_info"
 			logger.Error("canvas.Fill error", zap.Error(err))
 			return nil, err
 		}
 
 		pdfFile := filepath.Join(receiptsDir, payerFileName+".pdf")
 		if err := canvas.Save(pdfFile); err != nil {
+			errorType = "save_pdf_receipt"
 			logger.Error("failed to save pdf", zap.String("pdf", pdfFile), zap.Error(err))
 			return nil, err
 		}
@@ -330,11 +404,14 @@ func (m *Manager) prepareReceiptTemplate(org pkg.Organization) (string, error) {
 	xlsCleanFilename := strings.TrimSuffix(xlsFilename, filepath.Ext(xlsFilename))
 	pdfPath := filepath.Join(m.dirs.ReceiptPatternsDir, xlsCleanFilename+".pdf")
 
+	convStart := time.Now()
 	logger.Info("converting xls to pdf", zap.String("xls", xlsPath), zap.String("pdf", pdfPath))
 	if err := converter.ExcelToPdf(xlsPath, pdfPath, m.converterConfigKey); err != nil {
-		logger.Error("ExcelToPdf failed", zap.Error(err))
+		logger.Error("ExcelToPdf failed", zap.Error(err), zap.Duration("elapsed", time.Since(convStart)))
 		return "", errs.Wrap(errs.System, "ExcelToPdf failed", err)
 	}
+
+	logger.Info("conversion completed", zap.Duration("elapsed", time.Since(convStart)))
 
 	logger.Info("prepareReceiptTemplate completed", zap.Duration("elapsed", time.Since(start)))
 	return pdfPath, nil
@@ -344,6 +421,7 @@ func (m *Manager) prepareReceiptTemplate(org pkg.Organization) (string, error) {
 func (m *Manager) validateBeforeProcessFile(ctx context.Context) error {
 	// if GetSettings succeeded, settings are fetched into cache of settings service
 	settings, err := m.Settings.GetSettings(ctx)
+
 	if err != nil {
 		logger.Warn("Settings.GetSettings failed", zap.Error(err))
 		return errs.Wrap(errs.System, "Settings.GetSettings failed", err)

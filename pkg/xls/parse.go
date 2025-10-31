@@ -1,10 +1,13 @@
 package xls
 
 import (
+	"errors"
 	"li-acc/internal/errs"
+	"li-acc/internal/metrics"
 	"li-acc/pkg/model"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -124,16 +127,40 @@ func ParseSettingsFromFile(ss *excelize.File, sheet string) (*model.Organization
 // ParseSettings opens Excel file and checks its validity calling OpenAndCheckSheets.
 // If no error, then calls ParseSettingsFromFile that performs parsing logic.
 func ParseSettings(filepath string) (*model.Organization, error) {
+	start := time.Now()
+
+	// error type string for metrics
+	var errorType string
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		if errorType != "" {
+			metrics.ParseOrgDuration.WithLabelValues("failure").Observe(duration)
+			metrics.ParseOrgTotal.WithLabelValues("failure", errorType).Inc()
+		} else {
+			metrics.ParseOrgDuration.WithLabelValues("success").Observe(duration)
+			metrics.ParseOrgTotal.WithLabelValues("success", "").Inc()
+		}
+	}()
+
 	sheet := SettingsSheet // this is current settings sheet that must be in the spreadsheet
 	ss, err := OpenAndCheckSheets(filepath, sheet)
 
 	// Check if the file is valid and open it
 	if err != nil {
+		errorType = "validation"
 		return nil, err
 	}
 	defer ss.Close()
 
-	return ParseSettingsFromFile(ss, sheet)
+	org, err := ParseSettingsFromFile(ss, sheet)
+
+	var mp *MissingParamsError
+	if errors.As(err, &mp) {
+		errorType = "missed_params"
+	}
+
+	return org, err
 }
 
 // ParsePayersFromFile parses rows for each payer from the shee in the given range.
@@ -188,16 +215,41 @@ func ParsePayersFromFile(ss *excelize.File, sheet string) ([]model.Payer, error)
 // ParsePayers opens Excel file and checks its validity calling OpenAndCheckSheets.
 // If no error, then calls ParsePayersFromFile that performs parsing logic.
 func ParsePayers(filepath string) ([]model.Payer, error) {
+	start := time.Now()
+
+	// error type string for metrics
+	var errorType string
+	// defer metrics updating, when the occured error's type will be known
+	defer func() {
+		duration := time.Since(start).Seconds()
+		if errorType != "" {
+			metrics.ParsePayersDuration.WithLabelValues("failure").Observe(duration)
+			metrics.ParsePayersTotal.WithLabelValues("failure", errorType).Inc()
+		} else {
+			metrics.ParsePayersDuration.WithLabelValues("success").Observe(duration)
+			metrics.ParsePayersTotal.WithLabelValues("success", "").Inc()
+		}
+	}()
+
 	sheet := PayersSheet // this is current settings sheet that must be in the spreadsheet
 	ss, err := OpenAndCheckSheets(filepath, sheet)
 
-	// Check if the file is valid and open it
 	if err != nil {
+		// Check if the file is valid and open it
+		errorType = "validation"
 		return nil, err
 	}
 	defer ss.Close()
 
-	return ParsePayersFromFile(ss, sheet)
+	payers, err := ParsePayersFromFile(ss, sheet)
+	var mc *MissingPayersSheetColumns
+	if errors.As(err, &mc) {
+		errorType = "missed_columns"
+	}
+
+	metrics.PayersParsedCount.WithLabelValues("failure").Observe(float64(len(payers)))
+
+	return payers, err
 }
 
 // ParseEmailFromFile parses all emails and payers full names from sheet.

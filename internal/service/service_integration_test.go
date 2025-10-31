@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"li-acc/internal/model"
 	"os"
 	"path/filepath"
@@ -66,7 +65,8 @@ func TestIntegration_ProcessPayersFile_FileOrchestration(t *testing.T) {
 
 	// MOCK: Mail service (already tested in pkg/sender)
 	mockMail := &mockMailService{
-		sendErr: nil,
+		sentCount: 2,
+		sendErr:   nil,
 	}
 
 	// Create Manager with REAL file operations, MOCK database/email
@@ -96,9 +96,10 @@ func TestIntegration_ProcessPayersFile_FileOrchestration(t *testing.T) {
 
 	// === ACT: Execute the orchestration workflow ===
 	startTime := time.Now()
-	receiptsMap, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
+	receiptsMap, sentCount, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
 	elapsed := time.Since(startTime)
-	fmt.Println(receiptsMap)
+
+	require.Equal(t, sentCount, mockMail.sentCount)
 
 	// === ASSERT: Verify orchestration worked correctly ===
 
@@ -212,7 +213,7 @@ func TestIntegration_ProcessPayersFile_ValidationFailure(t *testing.T) {
 	}
 
 	// ACT: Should fail at validation
-	_, err = m.ProcessPayersFile(ctx, "test.xlsm", data)
+	_, _, err = m.ProcessPayersFile(ctx, "test.xlsm", data)
 
 	// ASSERT: Error returned, no files created
 	require.Error(t, err)
@@ -273,7 +274,7 @@ func TestIntegration_ProcessPayersFile_HistoryFailure(t *testing.T) {
 	}
 
 	// ACT: Should fail at history recording
-	_, err = m.ProcessPayersFile(ctx, "test.xlsm", data)
+	_, _, err = m.ProcessPayersFile(ctx, "test.xlsm", data)
 
 	// ASSERT: Error propagated correctly
 	require.Error(t, err)
@@ -324,10 +325,12 @@ func TestIntegration_ProcessPayersFile_EmailMappingError(t *testing.T) {
 		},
 	}
 
+	mockMail := &mockMailService{sentCount: 1}
+
 	m := &Manager{
 		History:            &mockHistoryService{},
 		Settings:           mockSettings,
-		Mail:               &mockMailService{},
+		Mail:               mockMail,
 		storage:            defaultFileStorage{},
 		payerParser:        defaultPayerParser{},
 		orgParser:          defaultOrgParser{},
@@ -348,11 +351,12 @@ func TestIntegration_ProcessPayersFile_EmailMappingError(t *testing.T) {
 		},
 	}
 
-	receiptsMap, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
+	receiptsMap, sentCount, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
 
 	// Must have partial success
 	require.Error(t, err)
 	require.NotEmpty(t, receiptsMap)
+	require.Equal(t, sentCount, mockMail.sentCount)
 
 	var mappingErr *EmailMappingError
 	ok := errors.As(err, &mappingErr)
@@ -398,6 +402,7 @@ func TestIntegration_ProcessPayersFile_EmailSendingError(t *testing.T) {
 				"john@example.com": "SMTP 550 error",
 			},
 		},
+		sentCount: 0,
 	}
 
 	m := &Manager{
@@ -424,10 +429,11 @@ func TestIntegration_ProcessPayersFile_EmailSendingError(t *testing.T) {
 		},
 	}
 
-	receiptsMap, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
+	receiptsMap, sentCount, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
 
 	// Expect EmailSendingError
 	require.Error(t, err)
+	require.Equal(t, sentCount, failingMail.sentCount)
 	var sendErr *EmailSendingError
 	ok := errors.As(err, &sendErr)
 	require.True(t, ok, "Error must be of type EmailSendingError")
@@ -497,9 +503,10 @@ func TestIntegration_ProcessPayersFile_CompositeError(t *testing.T) {
 		},
 	}
 
-	receiptsMap, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
+	receiptsMap, sentCount, err := m.ProcessPayersFile(ctx, "real_case_valid.xlsm", data)
 
 	require.Error(t, err)
+	require.Equal(t, sentCount, failingMail.sentCount)
 	var composite *CompositeError
 	ok := errors.As(err, &composite)
 	require.True(t, ok, "Error must be of type CompositeError")
