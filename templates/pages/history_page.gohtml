@@ -1,0 +1,11 @@
+{{ template "base" . }}
+
+{{ define "content" }}
+<div class="main">
+    <h1 id="history">История</h1>
+
+    {{ range .Files }}
+    <a class="history-link" href="{{ .FilePath }}" download>{{ .FileName }}</a>
+    {{ end }}
+</div>
+{{ end }}

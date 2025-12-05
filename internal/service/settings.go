@@ -196,7 +196,7 @@ func (s *settingsService) ProcessEmailsFile(ctx context.Context, filename string
 			}
 		}
 
-		return errs.Wrap(errs.User, "invalid or corrupted emails file", err)
+		return errs.Wrap(errs.System, "invalid or corrupted emails file", err)
 	}
 
 	logger.Info("Emails parsed successfully",

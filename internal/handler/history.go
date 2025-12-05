@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"li-acc/internal/model"
 	"li-acc/internal/service"
 	"net/http"
 
@@ -31,6 +33,11 @@ func (h *HistoryHandler) GetFilesHistory(c *gin.Context) {
 	if err != nil {
 		c.Error(err)
 		return
+	}
+
+	// Form FilePath for each file
+	for i := range records {
+		records[i].FilePath = fmt.Sprintf("%s/%s", model.PayersXlsDir, records[i].FileName)
 	}
 
 	// Respond with JSON and 200 status

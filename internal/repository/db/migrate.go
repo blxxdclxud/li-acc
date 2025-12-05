@@ -31,6 +31,7 @@ func ApplyMigrations(db *sql.DB, migrationsDir string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to initialize migrator: %w", err)
 	}
+	defer migrator.Close()
 
 	err = migrator.Up()
 	if err != nil && !errors.Is(err, migrate.ErrNoChange) {

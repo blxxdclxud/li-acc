@@ -199,8 +199,7 @@ func TestProcessEmailsFile(t *testing.T) {
 
 		err := svc.ProcessEmailsFile(context.Background(), "emails.xlsx", []byte("bad"))
 		require.Error(t, err)
-		// even system errors are wrapped as errs.User at top-level in current code
-		require.True(t, errs.IsUserError(err))
+		require.True(t, errs.IsSystemError(err))
 	})
 
 	t.Run("upload emails fails", func(t *testing.T) {

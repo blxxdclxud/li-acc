@@ -40,13 +40,12 @@ func NewMailService(smtp model.SMTP) MailService {
 // it collects all errors (if any) and returns amount of sent mails and a combined error message.
 func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, error) {
 	start := time.Now()
-	maxParallel := defaultMaxParallel // limit of simultaneous SMTP sends
+	maxParallel := defaultMaxParallel
 
-	// error type string for metrics
 	var errorType string
-	var totalSent int // total amount of sent emails
+	var totalSent int
+	var failedCount int
 
-	// defer metrics updating, when the occured error's type will be known
 	defer func() {
 		duration := time.Since(start).Seconds()
 		var status string
@@ -61,6 +60,12 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 		metrics.SendMailsDuration.WithLabelValues(status).Observe(duration)
 		metrics.SendMailsTotal.WithLabelValues(status, errorType).Inc()
 		metrics.MailsSentCount.WithLabelValues(status).Observe(float64(totalSent))
+
+		if status == "partial" {
+			metrics.MailsFailedCount.WithLabelValues("partial").Observe(float64(failedCount))
+		} else {
+			metrics.MailsFailedCount.WithLabelValues("success").Observe(0)
+		}
 	}()
 
 	logger.Info("SendMails started",
@@ -68,20 +73,22 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 		zap.String("subject", mail.Subject),
 	)
 
-	// Validate input
+	// Валидация
 	if len(mail.To) == 0 {
+		errorType = "validation"
 		err := errors.New("no recipients provided")
-		logger.Warn("SendMails validation failedMails", zap.Error(err))
+		logger.Warn("SendMails validation failed", zap.Error(err))
 		return 0, fmt.Errorf("validation error: %w", err)
 	}
 
-	// concurrency controls
 	semaphore := make(chan struct{}, maxParallel)
 	statusChan := make(chan sender.EmailStatus, len(mail.To))
 	wg := sync.WaitGroup{}
 
+	// Проверка контекста
 	select {
 	case <-ctx.Done():
+		errorType = "context_canceled"
 		err := ctx.Err()
 		logger.Warn("SendMails aborted - context canceled", zap.Error(err))
 		return 0, fmt.Errorf("operation canceled: %w", err)
@@ -99,7 +106,6 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 				wg.Done()
 			}()
 
-			// check context in each worker
 			select {
 			case <-ctx.Done():
 				statusChan <- sender.EmailStatus{
@@ -111,9 +117,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 			default:
 			}
 
-			// Prepare attachment
 			attach, err := mail.GetAttachmentPath(recipient)
-			// Create message
 			msg, _ := sender.FormMessage(mail.Subject, mail.Body, attach, mail.From, recipient)
 			if err != nil {
 				statusChan <- sender.EmailStatus{
@@ -142,7 +146,7 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 
 	for status := range statusChan {
 		if status.Status == sender.Error {
-			logger.Error("SendMails failedMails to send email",
+			logger.Error("SendMails failed to send email",
 				zap.Any("recipients", status.Msg.GetHeader("To")),
 				zap.String("status_msg", status.StatusMsg),
 				zap.Error(status.Cause),
@@ -151,7 +155,6 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 			to := status.Msg.GetHeader("To")
 
 			if len(to) > 0 {
-				// remove sender email occurrences and pick first remaining
 				for _, receiver := range to {
 					if receiver == mail.From {
 						continue
@@ -161,7 +164,6 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 					failedAttachments[receiver] = attach
 				}
 			}
-
 		} else {
 			totalSent++
 		}
@@ -175,12 +177,12 @@ func (m *mailService) SendMails(ctx context.Context, mail model.Mail) (int, erro
 		zap.Duration("elapsed", duration),
 	)
 
+	failedCount = len(failedMails)
+
 	if len(failedMails) > 0 {
-		metrics.MailsFailedCount.WithLabelValues("partial").Observe(float64(len(failedMails)))
+		errorType = "smtp_error"
 		return totalSent, &EmailSendingError{MapReceiverCause: failedMails, AttachmentPaths: failedAttachments}
 	}
-
-	metrics.MailsFailedCount.WithLabelValues("success").Observe(0)
 
 	return totalSent, nil
 }

@@ -1,0 +1,46 @@
+{{ template "base" . }}
+
+{{define "content"}}
+    <div class="main">
+        <h1 id="history">Документация</h1>
+        <div class="docs">
+            <ul>
+                <li style="color: red">
+                    Внимание! Перед каждой отправкой файла на главной странице настоятельно рекомендуем загружать
+                    этот
+                    же файл в поле настроек на странице "Настройки"
+                </li>
+                <li>
+                    На странице "Настройки":
+                    <ul>
+                        <li>
+                            В поле загрузки файла с настройками(банковскими данными отправителя) загрузите Excel
+                            файл,
+                            соответствующий
+                            <span><a href="https://drive.google.com/file/d/1Yb8LBd73INCc5smuNXucqQMN75ho0NMO/view?usp=sharing">этому</a></span>
+                            шаблону (обрабатывается лист "Настройки").
+                        </li>
+                        <li>
+                            В поле загрузки файла с адресами эл. почт получателей загрузите Excel файл,
+                            соответствующий
+                            <span><a
+                                        href="https://docs.google.com/spreadsheets/d/1ZDFaDZ8obc_f86yxmSNrcS7lKIrsCVdr/edit?usp=sharing&ouid=114297373023756156490&rtpof=true&sd=true">этому</a></span>
+                            шаблону.
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    На "Главной" странице вы должны загрузить Excel файл, соответствующий
+                    <span><a href="https://drive.google.com/file/d/1Yb8LBd73INCc5smuNXucqQMN75ho0NMO/view?usp=sharing">этому</a></span>
+                    шаблону (обрабатывается лист "Реестр зачислений").
+                </li>
+                <li>
+                    На странице "История" будут сохраняться файлы, которые вы загружали на главной странице, если
+                    они
+                    были успешно обработаны (т.е. квитанции были отправлены без ошибок).
+                </li>
+            </ul>
+        </div>
+    </div>
+
+{{ end }}

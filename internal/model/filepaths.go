@@ -16,6 +16,8 @@ var BlankReceiptPath = "./assets/excel/blank_receipt_pattern.xls"
 
 const MigrationsDir = "./internal/repository/db/migrations"
 
+const TemplatesDir = "./templates"
+
 // EnsureTmpDirectories creates all required temporary directories
 func EnsureTmpDirectories() error {
 	dirs := []string{

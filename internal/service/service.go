@@ -168,7 +168,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	// validate settings exist and are OK
 	if err := m.validateBeforeProcessFile(ctx); err != nil {
 		logger.Warn("validation before processing failed", zap.Error(err))
-		return nil, 0, errs.Wrap(errs.System, "validation before processing failed", err)
+		return nil, 0, errs.Wrap(errs.Validation, "validation before processing failed", err)
 	}
 
 	settings := m.Settings.GetCache()
@@ -180,6 +180,8 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 		return nil, 0, errs.Wrap(errs.System, "failed to store uploaded file "+filePath, err)
 	}
 	logger.Info("stored uploaded file", zap.String("path", filePath))
+
+	_, storedFileName := filepath.Split(filePath)
 
 	// parse payers list
 	payers, err := m.payerParser.ParsePayers(filePath)
@@ -198,7 +200,7 @@ func (m *Manager) ProcessPayersFile(ctx context.Context, filename string, data [
 	}
 
 	// record file in history
-	if err := m.History.AddRecord(ctx, model.File{FileName: filename, FileData: data}); err != nil {
+	if err := m.History.AddRecord(ctx, model.File{FileName: storedFileName, FileData: data}); err != nil {
 		logger.Error("failed to add history record", zap.Error(err))
 		// Wrap system error and return
 		return nil, 0, errs.Wrap(errs.System, "history.AddRecord: %w", err)
@@ -426,8 +428,8 @@ func (m *Manager) validateBeforeProcessFile(ctx context.Context) error {
 		logger.Warn("Settings.GetSettings failed", zap.Error(err))
 		return errs.Wrap(errs.System, "Settings.GetSettings failed", err)
 	}
-	if settings.Emails == nil {
-		return errs.New(errs.User, "emails file is not uploaded")
+	if len(settings.Emails) == 0 {
+		return errs.New(errs.Validation, "emails file is not uploaded")
 	}
 	if settings.SenderEmail == "" {
 		return errs.New(errs.User, "sender email is not set")
@@ -440,8 +442,8 @@ func (m *Manager) validateBeforeProcessFile(ctx context.Context) error {
 // Returns path to saved file.
 func storeUploadedFile(filename, dir string, data []byte) (string, error) {
 	// use timestamped filename - safer to use sanitized name and a session id or UUID
-	now := time.Now().Unix()
-	targetDir := filepath.Join(dir, fmt.Sprintf("%d_%s", now, filename))
+	now := time.Now().Format("2006-01-02_15-04-05")
+	targetDir := filepath.Join(dir, fmt.Sprintf("%s_%s", now, filename))
 	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
 		return "", fmt.Errorf("failed to create directories for '%s': %w", targetDir, err)
 	}

@@ -16,6 +16,12 @@ import (
 // If no translation is found, or the error is of "server" type, it returns a default or fallback message.
 func Localizer(err error) string {
 	var codedError errs.CodedError
+
+	// validation error (e.g. 0 emails in settings)
+	if errors.As(err, &codedError) && errs.IsValidationError(err) {
+		return "Email получателей не загружены"
+	}
+
 	if errors.As(err, &codedError) && errs.IsUserError(err) {
 		//
 		// ==== xls package errors ===
@@ -51,7 +57,7 @@ func Localizer(err error) string {
 		// ==== service layer errors ===
 		//
 		emailMappingBaseMsg := "Некоторые плательщики не имеют сопоставленных email адресов"
-		emailSendingBaseMsg := "Неудалось отправить квитанции некоторым получателям"
+		emailSendingBaseMsg := "Не удалось отправить квитанции некоторым получателям"
 
 		var c *service.CompositeError
 		if errors.As(err, &c) {

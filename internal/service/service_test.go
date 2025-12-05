@@ -106,7 +106,7 @@ func TestValidateBeforeProcessFile(t *testing.T) {
 		m := &Manager{Settings: svc}
 		err := m.validateBeforeProcessFile(context.Background())
 		require.Error(t, err)
-		require.True(t, errs.IsUserError(err))
+		require.True(t, errs.IsValidationError(err))
 		require.Contains(t, err.Error(), "emails file")
 	})
 

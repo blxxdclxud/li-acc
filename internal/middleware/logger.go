@@ -53,13 +53,18 @@ func LoggingMiddleware(cfg LoggerConfig) gin.HandlerFunc {
 		blw := &bodyLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
 		c.Writer = blw
 
+		path := c.Request.URL.Path
+
 		c.Next()
+
+		if !strings.Contains(path, "/api") {
+			return // do not log non-API requests
+		}
 
 		// After handler runs
 		latency := time.Since(start)
 		statusCode := c.Writer.Status()
 		clientIP := c.ClientIP()
-		path := c.Request.URL.Path
 		method := c.Request.Method
 		userAgent := c.Request.UserAgent()
 		errorsString := c.Errors.String()
