@@ -20,6 +20,7 @@ import (
 	migrator "li-acc/internal/repository/db"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/jackc/pgx/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
@@ -33,6 +34,7 @@ func main() {
 	if err := logger.Init(ENV); err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
+	defer logger.Sync()
 
 	// ==== Setup Service Layer
 
@@ -42,7 +44,7 @@ func main() {
 		db.User, db.Password, db.Host, db.Port, db.DbName)
 
 	// Use sql.DB for migrations
-	migrationDB, err := sql.Open("pgx", dsn)
+	migrationDB, err := sql.Open("postgres", dsn)
 	if err != nil {
 		logger.Fatal("failed to open DB for migrations:", zap.Error(err))
 	}
@@ -77,9 +79,13 @@ func main() {
 
 	// ==== Setup Servers
 
-	// API server
-	apiRouter := handler.SetupRouter(serviceManager)
+	// UI handler (with base URL for inner requests)
 	apiHost := cfg.Server.Host + ":" + cfg.Server.Port
+	apiBaseURL := "http://" + apiHost
+	uiHandler := handler.NewUIHandler(apiBaseURL, model.TemplatesDir)
+
+	// API server
+	apiRouter := handler.SetupRouter(serviceManager, uiHandler)
 	apiServer := &http.Server{
 		Addr:    apiHost,
 		Handler: apiRouter,

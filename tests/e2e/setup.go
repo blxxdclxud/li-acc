@@ -37,6 +37,8 @@ type TestEnvironment struct {
 const MigrationsDir = "../../internal/repository/db/migrations"
 
 func SetupTestEnvironment(t *testing.T) (*TestEnvironment, func()) {
+	orig := model.BlankReceiptPath
+	defer func(p string) { model.BlankReceiptPath = p }(orig)
 	model.BlankReceiptPath = "../." + model.BlankReceiptPath // properly use global relative paths
 
 	if err := logger.Init("test"); err != nil {
@@ -217,9 +219,11 @@ func startTestApp(t *testing.T, cfg *config.Config) *App {
 	serviceManager.SetPdfFontPath("../../static/fonts/Arial.ttf")
 
 	// ==== Setup Servers ====
-
-	apiRouter := handler.SetupRouter(serviceManager)
 	apiHost := cfg.Server.Host + ":" + cfg.Server.Port
+	apiBaseURL := "http://" + apiHost
+	uiHandler := handler.NewUIHandler(apiBaseURL, "../../templates")
+
+	apiRouter := handler.SetupRouter(serviceManager, uiHandler)
 	apiServer := &http.Server{
 		Addr:    apiHost,
 		Handler: apiRouter,
