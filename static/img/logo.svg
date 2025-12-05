@@ -1,0 +1,23 @@
+<svg version="1.2" baseProfile="tiny-ps" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+	<title>li7</title>
+	<defs>
+		<linearGradient id="grd1" gradientUnits="userSpaceOnUse"  x1="116.5" y1="32" x2="116.5" y2="173">
+			<stop offset="0" stop-color="#356434"  />
+			<stop offset="1" stop-color="#3b4d3a"  />
+		</linearGradient>
+		<linearGradient id="grd2" gradientUnits="userSpaceOnUse"  x1="116.5" y1="45" x2="116.5" y2="158">
+			<stop offset="0" stop-color="#356434"  />
+			<stop offset="1" stop-color="#3b4d3a"  />
+		</linearGradient>
+	</defs>
+	<style>
+		tspan { white-space:pre }
+		.shp0 { fill: url(#grd1) } 
+		.shp1 { fill: #ffffff } 
+		.shp2 { fill: url(#grd2) } 
+	</style>
+	<path id="Shape 1" class="shp0" d="M68 32L165 32L165 149L117 173L68 149L68 32Z" />
+	<path id="Shape 2" class="shp1" d="M70 148L70 34L163 34L163 148L117 171L70 148Z" />
+	<path id="Shape 3" class="shp2" d="M82 45L105 45L113 54L103 105L119 105L112 140L116 142L117 142L133 134L119 54L126 45L151 45L151 142L117 158L82 142L82 45Z" />
+	<path id="Shape 4" class="shp1" d="M102 110L112 110L107 137L98 133L102 110Z" />
+</svg>
