@@ -25,6 +25,7 @@ go.work.sum
 .env
 pkg/**/.env.local
 tests/**/.env.test
+tests/e2e/testdata/manual
 
 # output files of integration tests
 pkg/**/out/
@@ -34,3 +35,4 @@ pkg/**/out/
 tests/**/tmp
 
 tmp
+/tests/e2e/testdata/manual/
