@@ -22,7 +22,9 @@ func setupPostgres(ctx context.Context) (string, func(), error) {
 			"POSTGRES_DB":       db,
 			"POSTGRES_PASSWORD": pass,
 		},
-		WaitingFor: wait.ForListeningPort("5432").WithStartupTimeout(10 * time.Second),
+		WaitingFor: wait.ForLog("database system is ready to accept connections").
+			WithOccurrence(2).
+			WithStartupTimeout(60 * time.Second),
 	}
 
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
